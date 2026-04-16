@@ -1,0 +1,227 @@
+import { spawn } from "child_process";
+import fs from "fs";
+import path from "path";
+
+const ROOT = process.cwd();
+const ENV_PATH = path.join(ROOT, ".env");
+const TRADERS_PATH = path.join(ROOT, "traders.json");
+
+const BOT_KEYS = [
+  "BOT_NOISE_PK",
+  "BOT_SHOCK_PK",
+  "BOT_TREND_PK",
+  "BOT_CONSERVATIVE_PK",
+  "BOT_MOMENTUM_PK",
+  "BOT_MEAN_REVERSION_PK",
+];
+
+function parseEnv(content) {
+  const env = {};
+  const lines = content.split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const idx = trimmed.indexOf("=");
+    if (idx === -1) continue;
+
+    const key = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim();
+    env[key] = value;
+  }
+
+  return env;
+}
+
+function buildEnv(env) {
+  return Object.entries(env)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n") + "\n";
+}
+
+function writeEnv(newValues) {
+  let env = {};
+
+  if (fs.existsSync(ENV_PATH)) {
+    env = parseEnv(fs.readFileSync(ENV_PATH, "utf-8"));
+  }
+
+  env = {
+    ...env,
+    ...newValues,
+  };
+
+  fs.writeFileSync(ENV_PATH, buildEnv(env), "utf-8");
+}
+
+function writeTradersJson(addresses) {
+  const payload = {
+    traders: addresses,
+  };
+
+  fs.writeFileSync(TRADERS_PATH, JSON.stringify(payload, null, 2), "utf-8");
+}
+
+function startHardhatNode() {
+  return new Promise((resolve, reject) => {
+    const child = spawn("yarn", ["hhnode"], {
+      cwd: ROOT,
+      shell: true,
+    });
+
+    let stdoutBuffer = "";
+    let resolved = false;
+
+    const accounts = [];
+    const privateKeys = [];
+
+    child.stdout.on("data", (chunk) => {
+      const text = chunk.toString();
+      process.stdout.write(text);
+      stdoutBuffer += text;
+
+      const accountRegex = /Account #\d+:\s+(0x[a-fA-F0-9]{40})/g;
+      const pkRegex = /Private Key:\s+(0x[a-fA-F0-9]{64})/g;
+
+      let match;
+      while ((match = accountRegex.exec(stdoutBuffer)) !== null) {
+        const addr = match[1].toLowerCase();
+        if (!accounts.includes(addr)) accounts.push(addr);
+      }
+
+      while ((match = pkRegex.exec(stdoutBuffer)) !== null) {
+        const pk = match[1].toLowerCase();
+        if (!privateKeys.includes(pk)) privateKeys.push(pk);
+      }
+
+      if (
+        !resolved &&
+        stdoutBuffer.includes("Started HTTP and WebSocket JSON-RPC server") &&
+        accounts.length >= 7 &&
+        privateKeys.length >= 7
+      ) {
+        resolved = true;
+        resolve({ child, accounts, privateKeys });
+      }
+    });
+
+    child.stderr.on("data", (chunk) => {
+      process.stderr.write(chunk.toString());
+    });
+
+    child.on("error", reject);
+
+    child.on("exit", (code) => {
+      if (!resolved) {
+        reject(new Error(`hardhat node exited early with code ${code}`));
+      }
+    });
+  });
+}
+
+function runDeploy() {
+  return new Promise((resolve, reject) => {
+    const child = spawn("yarn", ["deploy:local"], {
+      cwd: ROOT,
+      shell: true,
+    });
+
+    let stdoutBuffer = "";
+    const result = {};
+
+    child.stdout.on("data", (chunk) => {
+      const text = chunk.toString();
+      process.stdout.write(text);
+      stdoutBuffer += text;
+
+      const patterns = {
+        CASH_ADDRESS: /CASH:\s+(0x[a-fA-F0-9]{40})/,
+        EXCHANGE_ADDRESS: /EXCHANGE:\s+(0x[a-fA-F0-9]{40})/,
+        PROD1_ADDRESS: /PROD1:\s+(0x[a-fA-F0-9]{40})/,
+        PROD2_ADDRESS: /PROD2:\s+(0x[a-fA-F0-9]{40})/,
+        PROD3_ADDRESS: /PROD3:\s+(0x[a-fA-F0-9]{40})/,
+        PROD4_ADDRESS: /PROD4:\s+(0x[a-fA-F0-9]{40})/,
+        PROD5_ADDRESS: /PROD5:\s+(0x[a-fA-F0-9]{40})/,
+      };
+
+      for (const [key, regex] of Object.entries(patterns)) {
+        const match = stdoutBuffer.match(regex);
+        if (match) result[key] = match[1].toLowerCase();
+      }
+    });
+
+    child.stderr.on("data", (chunk) => {
+      process.stderr.write(chunk.toString());
+    });
+
+    child.on("error", reject);
+
+    child.on("exit", (code) => {
+      if (code !== 0) {
+        reject(new Error(`deploy failed with code ${code}`));
+        return;
+      }
+
+      resolve(result);
+    });
+  });
+}
+
+async function main() {
+  console.log("=================================");
+  console.log("Starting local bootstrap...");
+  console.log("=================================");
+
+  const { child: hhnode, accounts, privateKeys } = await startHardhatNode();
+
+  console.log("=================================");
+  console.log("Hardhat node detected.");
+  console.log("Accounts found:", accounts.length);
+  console.log("Private keys found:", privateKeys.length);
+  console.log("=================================");
+
+  const deployed = await runDeploy();
+
+  const botAddresses = accounts.slice(1, 7);
+  const botPrivateKeys = privateKeys.slice(1, 7);
+
+  const envValues = {
+    RPC_URL: "http://127.0.0.1:8545",
+    INITIAL_BASE_BALANCE: "1000",
+    TRADERS_FILE: "traders.json",
+    PORT: "3001",
+    ...deployed,
+  };
+
+  for (let i = 0; i < BOT_KEYS.length; i++) {
+    envValues[BOT_KEYS[i]] = botPrivateKeys[i];
+  }
+
+  writeEnv(envValues);
+  writeTradersJson(botAddresses);
+
+  console.log("=================================");
+  console.log(".env updated from real hhnode + deploy output.");
+  console.log("traders.json updated from real hhnode output.");
+  console.log("");
+  console.log("Admin account  : ", accounts[0]);
+  console.log("Bot traders    : ", botAddresses);
+  console.log("Contracts      : ", deployed);
+  console.log("");
+  console.log("Hardhat node is still running.");
+  console.log("Leave this terminal open.");
+  console.log("=================================");
+
+  process.on("SIGINT", () => {
+    console.log("\nStopping hardhat node...");
+    hhnode.kill();
+    process.exit(0);
+  });
+}
+
+main().catch((error) => {
+  console.error("Bootstrap error:");
+  console.error(error);
+  process.exit(1);
+});

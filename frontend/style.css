@@ -1,0 +1,218 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #050505;
+  color: #f5f5f5;
+  font-family: Arial, Helvetica, sans-serif;
+  line-height: 1.4;
+}
+
+.app {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 20px 60px;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.eyebrow {
+  color: #7a7a7a;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  margin-bottom: 10px;
+}
+
+h1 {
+  font-size: 40px;
+  margin-bottom: 10px;
+}
+
+.subtitle {
+  color: #b8b8b8;
+  max-width: 720px;
+}
+
+.status-box {
+  min-width: 280px;
+  background: #101010;
+  border: 1px solid #1f1f1f;
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.status-label {
+  color: #808080;
+  font-size: 12px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+#competition-status {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.muted {
+  color: #9b9b9b;
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.card {
+  background: #0d0d0d;
+  border: 1px solid #1c1c1c;
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.card-wide {
+  grid-column: 1 / -1;
+}
+
+.card-header {
+  margin-bottom: 18px;
+}
+
+.card-header h3 {
+  font-size: 20px;
+  margin-bottom: 6px;
+}
+
+.products-list,
+.trades-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.product-item,
+.trade-item {
+  background: #131313;
+  border: 1px solid #202020;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.product-top,
+.trade-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.product-symbol,
+.trade-type {
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.buy {
+  color: #74f0a7;
+}
+
+.sell {
+  color: #ff8a8a;
+}
+
+.product-details,
+.trade-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 8px 14px;
+  color: #bfbfbf;
+  font-size: 14px;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  text-align: left;
+  font-size: 13px;
+  color: #959595;
+  font-weight: normal;
+  padding: 12px 10px;
+  border-bottom: 1px solid #222;
+}
+
+tbody td {
+  padding: 14px 10px;
+  border-bottom: 1px solid #181818;
+  font-size: 14px;
+}
+
+.pnl-positive {
+  color: #74f0a7;
+  font-weight: bold;
+}
+
+.pnl-negative {
+  color: #ff8a8a;
+  font-weight: bold;
+}
+
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #1a1a1a;
+  font-size: 13px;
+}
+
+.empty {
+  color: #8d8d8d;
+  padding: 12px 0;
+}
+
+.address {
+  color: #a9a9a9;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.final-winner {
+  background: rgba(116, 240, 167, 0.07);
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card-wide {
+    grid-column: auto;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+}

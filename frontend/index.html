@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DEX CPMM Battle</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">DEX CPMM · BOT BATTLE</p>
+          <h1>Market Dashboard</h1>
+          <p class="subtitle">
+            Estado da exchange, movimento do mercado e ranking dos bots em tempo real.
+          </p>
+        </div>
+
+        <div class="status-box">
+          <p class="status-label">Competition Status</p>
+          <h2 id="competition-status">Loading...</h2>
+          <p id="competition-time" class="muted">A carregar dados...</p>
+        </div>
+      </header>
+
+      <main class="grid">
+        <section class="card">
+          <div class="card-header">
+            <h3>Products & Pools</h3>
+            <p class="muted">Reservas e preço implícito atual</p>
+          </div>
+          <div id="products-container" class="products-list">
+            <p class="empty">A carregar produtos...</p>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <h3>Recent Trades</h3>
+            <p class="muted">Últimas operações executadas pelos bots</p>
+          </div>
+          <div id="trades-container" class="trades-list">
+            <p class="empty">A carregar trades...</p>
+          </div>
+        </section>
+
+        <section class="card card-wide">
+          <div class="card-header">
+            <h3>Ranking</h3>
+            <p class="muted">Ordenado por PnL (maior ganho → menor ganho)</p>
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Trader</th>
+                  <th>Base Balance</th>
+                  <th>Total Value</th>
+                  <th>PnL</th>
+                </tr>
+              </thead>
+              <tbody id="ranking-body">
+                <tr>
+                  <td colspan="5" class="empty">A carregar ranking...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

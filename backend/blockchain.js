@@ -1,0 +1,276 @@
+const { ethers } = require("ethers");
+const {
+  setBaseToken,
+  setCompetitionStatus,
+  setProducts,
+  upsertPool,
+  addTrade,
+  setRanking,
+  getState
+} = require("./state");
+const { formatUnitsSafe, calculateRanking } = require("./ranking");
+
+const EXCHANGE_ABI = [
+  "function baseToken() view returns (address)",
+  "function getProductTokens() view returns (address[] memory)",
+  "function getPool(address productToken) view returns (bool exists, address token, uint256 reserveBase, uint256 reserveProduct)",
+  "function getSpotPrice(address productToken) view returns (uint256 priceInBase)",
+  "function getCompetitionStatus() view returns (uint8 status, uint256 startTime, uint256 endTime)",
+  "function traderCount() view returns (uint256)",
+  "function isTrader(address) view returns (bool)",
+  "event Bought(address indexed trader, address indexed productToken, uint256 baseAmountIn, uint256 productAmountOut, uint256 newReserveBase, uint256 newReserveProduct)",
+  "event Sold(address indexed trader, address indexed productToken, uint256 productAmountIn, uint256 baseAmountOut, uint256 newReserveBase, uint256 newReserveProduct)",
+  "event CompetitionStarted(uint256 indexed startTime)",
+  "event CompetitionEnded(uint256 indexed endTime)"
+];
+
+const TOKEN_ABI = [
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address owner) view returns (uint256)"
+];
+
+let provider;
+let exchange;
+let baseToken;
+let productContracts = {};
+let trackedTraders = [];
+
+function mapCompetitionStatus(statusNumber) {
+  if (statusNumber === 0) return "NOT_STARTED";
+  if (statusNumber === 1) return "ACTIVE";
+  if (statusNumber === 2) return "ENDED";
+  return "UNKNOWN";
+}
+
+async function initBlockchain() {
+  provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+
+  exchange = new ethers.Contract(
+    process.env.EXCHANGE_ADDRESS,
+    EXCHANGE_ABI,
+    provider
+  );
+
+  const baseTokenAddress = await exchange.baseToken();
+  baseToken = new ethers.Contract(baseTokenAddress, TOKEN_ABI, provider);
+
+  const baseSymbol = await baseToken.symbol();
+  const baseDecimals = await baseToken.decimals();
+
+  setBaseToken(baseTokenAddress, baseSymbol, Number(baseDecimals));
+
+  await refreshCompetitionStatus();
+  await refreshProductsAndPools();
+
+  registerEventListeners();
+
+  return {
+    provider,
+    exchange,
+    baseToken
+  };
+}
+
+async function refreshCompetitionStatus() {
+  const [statusRaw, startTimeRaw, endTimeRaw] = await exchange.getCompetitionStatus();
+
+  setCompetitionStatus({
+    competitionStatus: mapCompetitionStatus(Number(statusRaw)),
+    competitionStartTime: Number(startTimeRaw),
+    competitionEndTime: Number(endTimeRaw)
+  });
+}
+
+async function refreshProductsAndPools() {
+  const productAddresses = await exchange.getProductTokens();
+  const products = [];
+
+  for (const productAddress of productAddresses) {
+    const tokenContract = new ethers.Contract(productAddress, TOKEN_ABI, provider);
+    productContracts[productAddress.toLowerCase()] = tokenContract;
+
+    const symbol = await tokenContract.symbol();
+    const decimals = Number(await tokenContract.decimals());
+
+    const pool = await exchange.getPool(productAddress);
+    const spotPriceRaw = await exchange.getSpotPrice(productAddress);
+
+    const reserveBase = formatUnitsSafe(pool.reserveBase, 18);
+    const reserveProduct = formatUnitsSafe(pool.reserveProduct, decimals);
+    const spotPrice = formatUnitsSafe(spotPriceRaw, 18);
+
+    const productData = {
+      address: productAddress,
+      symbol,
+      decimals
+    };
+
+    products.push(productData);
+
+    upsertPool(productAddress, {
+      product: productData,
+      reserveBase,
+      reserveProduct,
+      spotPrice
+    });
+  }
+
+  setProducts(products);
+}
+
+function registerEventListeners() {
+  exchange.on(
+    "Bought",
+    async (
+      trader,
+      productToken,
+      baseAmountIn,
+      productAmountOut,
+      newReserveBase,
+      newReserveProduct
+    ) => {
+      const tokenContract = productContracts[productToken.toLowerCase()];
+      const symbol = tokenContract ? await tokenContract.symbol() : "UNKNOWN";
+      const decimals = tokenContract ? Number(await tokenContract.decimals()) : 18;
+
+      addTrade({
+        type: "BUY",
+        trader,
+        productToken,
+        productSymbol: symbol,
+        amountIn: formatUnitsSafe(baseAmountIn, 18),
+        amountOut: formatUnitsSafe(productAmountOut, decimals),
+        timestamp: Date.now()
+      });
+
+      upsertPool(productToken, {
+        reserveBase: formatUnitsSafe(newReserveBase, 18),
+        reserveProduct: formatUnitsSafe(newReserveProduct, decimals),
+        spotPrice: formatUnitsSafe(
+          (newReserveBase * 10n ** 18n) / newReserveProduct,
+          18
+        )
+      });
+
+      await refreshCompetitionStatus();
+      await updateRanking();
+    }
+  );
+
+  exchange.on(
+    "Sold",
+    async (
+      trader,
+      productToken,
+      productAmountIn,
+      baseAmountOut,
+      newReserveBase,
+      newReserveProduct
+    ) => {
+      const tokenContract = productContracts[productToken.toLowerCase()];
+      const symbol = tokenContract ? await tokenContract.symbol() : "UNKNOWN";
+      const decimals = tokenContract ? Number(await tokenContract.decimals()) : 18;
+
+      addTrade({
+        type: "SELL",
+        trader,
+        productToken,
+        productSymbol: symbol,
+        amountIn: formatUnitsSafe(productAmountIn, decimals),
+        amountOut: formatUnitsSafe(baseAmountOut, 18),
+        timestamp: Date.now()
+      });
+
+      upsertPool(productToken, {
+        reserveBase: formatUnitsSafe(newReserveBase, 18),
+        reserveProduct: formatUnitsSafe(newReserveProduct, decimals),
+        spotPrice: formatUnitsSafe(
+          (newReserveBase * 10n ** 18n) / newReserveProduct,
+          18
+        )
+      });
+
+      await refreshCompetitionStatus();
+      await updateRanking();
+    }
+  );
+
+  exchange.on("CompetitionStarted", async (startTime) => {
+    setCompetitionStatus({
+      competitionStatus: "ACTIVE",
+      competitionStartTime: Number(startTime)
+    });
+  });
+
+  exchange.on("CompetitionEnded", async (endTime) => {
+    setCompetitionStatus({
+      competitionStatus: "ENDED",
+      competitionEndTime: Number(endTime)
+    });
+    await updateRanking();
+  });
+}
+
+function setTrackedTraders(traders) {
+  trackedTraders = traders;
+}
+
+async function updateRanking() {
+  if (!trackedTraders.length) return [];
+
+  const state = getState();
+
+  const baseBalances = {};
+  const productBalancesByTrader = {};
+  const productPrices = {};
+
+  for (const product of state.products) {
+    const pool = state.pools[product.address.toLowerCase()];
+    productPrices[product.address.toLowerCase()] = pool?.spotPrice || 0;
+  }
+
+  for (const trader of trackedTraders) {
+    const traderKey = trader.toLowerCase();
+
+    const baseBalanceRaw = await baseToken.balanceOf(trader);
+    baseBalances[traderKey] = formatUnitsSafe(baseBalanceRaw, 18);
+
+    productBalancesByTrader[traderKey] = {};
+
+    for (const product of state.products) {
+      const tokenContract = productContracts[product.address.toLowerCase()];
+      const balanceRaw = await tokenContract.balanceOf(trader);
+
+      productBalancesByTrader[traderKey][product.address.toLowerCase()] =
+        formatUnitsSafe(balanceRaw, product.decimals);
+    }
+  }
+
+  const initialBaseBalance = Number(process.env.INITIAL_BASE_BALANCE || "1000");
+
+  const ranking = calculateRanking({
+    traders: trackedTraders,
+    baseBalances,
+    productBalancesByTrader,
+    productPrices,
+    initialBaseBalance
+  });
+
+  setRanking(ranking);
+
+  return ranking;
+}
+
+async function refreshAll() {
+  await refreshCompetitionStatus();
+  await refreshProductsAndPools();
+  await updateRanking();
+}
+
+module.exports = {
+  initBlockchain,
+  refreshAll,
+  setTrackedTraders,
+  updateRanking
+};
