@@ -442,3 +442,137 @@ Escolhido por:
 * deploy em testnet
 
 
+
+
+---
+
+
+## Comportamento dos Bots
+
+O sistema inclui múltiplos bots com estratégias distintas. Cada bot opera de forma independente, utilizando heurísticas simples baseadas no estado atual do mercado (preço, liquidez e variação).
+
+Todos os bots partem do mesmo saldo inicial e interagem com a DEX através de operações de compra (BUY) e venda (SELL).
+
+### Bot de Tendência (Trend Bot)
+
+Ideia: seguir o movimento do mercado.
+
+Comportamento:
+
+Se o preço está a subir → compra (espera continuar a subir)
+Se o preço está a descer → vende (evita perdas)
+
+Lógica simplificada:
+
+Compara preço atual com preço anterior
+Atua na mesma direção da variação
+
+Risco:
+
+Pode comprar no topo e vender no fundo em mercados voláteis
+### Bot de Momentum
+
+Ideia: aproveitar movimentos fortes e rápidos.
+
+Comportamento:
+
+Compra quando há subida forte (aceleração)
+Vende quando há queda forte
+
+Diferença do Trend:
+
+Não reage a qualquer variação → apenas a movimentos relevantes
+
+Risco:
+
+Pode entrar tarde (quando o movimento já está no fim)
+### Bot de Reversão à Média (Mean Reversion)
+
+Ideia: o preço tende a voltar ao valor médio.
+
+Comportamento:
+
+Se o preço está muito alto → vende
+Se o preço está muito baixo → compra
+
+Lógica:
+
+Calcula média histórica (ou recente)
+Compara com preço atual
+
+Risco:
+
+Em tendências fortes, pode operar contra o mercado e perder
+### Bot Conservador
+
+Ideia: minimizar risco.
+
+Comportamento:
+
+Faz poucas operações
+Compra apenas quando o preço está claramente baixo
+Vende com pequenos lucros
+
+Características:
+
+Baixa frequência
+Baixa exposição
+
+Resultado esperado:
+
+PnL menor, mas mais estável
+### Bot de Ruído (Noise Bot)
+
+Ideia: comportamento aleatório.
+
+Comportamento:
+
+Compra e vende sem estratégia clara
+Introduz "ruído" no mercado
+
+Objetivo:
+
+Simular traders irracionais
+
+Resultado esperado:
+
+Alto risco
+PnL imprevisível
+### Bot de Choque (Shock Bot)
+
+Ideia: provocar impacto no mercado.
+
+Comportamento:
+
+Executa operações grandes em momentos específicos
+Cria variações bruscas de preço
+
+Efeito:
+
+Afeta outros bots (especialmente Trend e Momentum)
+
+Resultado esperado:
+
+Pode ganhar muito ou perder muito
+🔥 Observação importante (isso aqui te dá pontos com o professor)
+## Interação entre bots
+
+O comportamento dos bots não é isolado.
+
+O Shock Bot altera o mercado
+O Trend/Momentum reagem a isso
+O Mean Reversion tenta corrigir
+O Noise adiciona instabilidade
+
+Ou seja:
+
+o sistema simula um ambiente de mercado emergente, onde estratégias interagem entre si
+
+Isso liga diretamente com:
+
+teoria dos jogos
+comportamento humano em mercados
+sistemas multi-agente
+
+---
+
