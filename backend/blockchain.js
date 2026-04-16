@@ -45,6 +45,16 @@ function mapCompetitionStatus(statusNumber) {
   return "UNKNOWN";
 }
 
+function getTokenContract(address) {
+  const key = address.toLowerCase();
+
+  if (!productContracts[key]) {
+    productContracts[key] = new ethers.Contract(address, TOKEN_ABI, provider);
+  }
+
+  return productContracts[key];
+}
+
 async function initBlockchain() {
   provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 
@@ -94,11 +104,8 @@ async function refreshProductsAndPools() {
   const productAddresses = await exchange.getProductTokens();
   const products = [];
 
-  productContracts = {};
-
   for (const productAddress of productAddresses) {
-    const tokenContract = new ethers.Contract(productAddress, TOKEN_ABI, provider);
-    productContracts[productAddress.toLowerCase()] = tokenContract;
+    const tokenContract = getTokenContract(productAddress);
 
     const symbol = await tokenContract.symbol();
     const decimals = Number(await tokenContract.decimals());
@@ -140,32 +147,36 @@ function registerEventListeners() {
       newReserveBase,
       newReserveProduct
     ) => {
-      const tokenContract = productContracts[productToken.toLowerCase()];
-      const symbol = tokenContract ? await tokenContract.symbol() : "UNKNOWN";
-      const decimals = tokenContract ? Number(await tokenContract.decimals()) : 18;
+      try {
+        const tokenContract = getTokenContract(productToken);
+        const symbol = await tokenContract.symbol();
+        const decimals = Number(await tokenContract.decimals());
 
-      addTrade({
-        type: "BUY",
-        trader,
-        traderName: traderMetaMap[trader.toLowerCase()]?.name || trader,
-        productToken,
-        productSymbol: symbol,
-        amountIn: formatUnitsSafe(baseAmountIn, 18),
-        amountOut: formatUnitsSafe(productAmountOut, decimals),
-        timestamp: Date.now()
-      });
+        addTrade({
+          type: "BUY",
+          trader,
+          traderName: traderMetaMap[trader.toLowerCase()]?.name || trader,
+          productToken,
+          productSymbol: symbol,
+          amountIn: formatUnitsSafe(baseAmountIn, 18),
+          amountOut: formatUnitsSafe(productAmountOut, decimals),
+          timestamp: Date.now()
+        });
 
-      const reserveProductNum = formatUnitsSafe(newReserveProduct, decimals);
-      const reserveBaseNum = formatUnitsSafe(newReserveBase, 18);
+        const reserveProductNum = formatUnitsSafe(newReserveProduct, decimals);
+        const reserveBaseNum = formatUnitsSafe(newReserveBase, 18);
 
-      upsertPool(productToken, {
-        reserveBase: reserveBaseNum,
-        reserveProduct: reserveProductNum,
-        spotPrice: reserveProductNum > 0 ? reserveBaseNum / reserveProductNum : 0
-      });
+        upsertPool(productToken, {
+          reserveBase: reserveBaseNum,
+          reserveProduct: reserveProductNum,
+          spotPrice: reserveProductNum > 0 ? reserveBaseNum / reserveProductNum : 0
+        });
 
-      await refreshCompetitionStatus();
-      await updateRanking();
+        await refreshCompetitionStatus();
+        await updateRanking();
+      } catch (error) {
+        console.error("Bought event handler error:", error.message);
+      }
     }
   );
 
@@ -179,49 +190,61 @@ function registerEventListeners() {
       newReserveBase,
       newReserveProduct
     ) => {
-      const tokenContract = productContracts[productToken.toLowerCase()];
-      const symbol = tokenContract ? await tokenContract.symbol() : "UNKNOWN";
-      const decimals = tokenContract ? Number(await tokenContract.decimals()) : 18;
+      try {
+        const tokenContract = getTokenContract(productToken);
+        const symbol = await tokenContract.symbol();
+        const decimals = Number(await tokenContract.decimals());
 
-      addTrade({
-        type: "SELL",
-        trader,
-        traderName: traderMetaMap[trader.toLowerCase()]?.name || trader,
-        productToken,
-        productSymbol: symbol,
-        amountIn: formatUnitsSafe(productAmountIn, decimals),
-        amountOut: formatUnitsSafe(baseAmountOut, 18),
-        timestamp: Date.now()
-      });
+        addTrade({
+          type: "SELL",
+          trader,
+          traderName: traderMetaMap[trader.toLowerCase()]?.name || trader,
+          productToken,
+          productSymbol: symbol,
+          amountIn: formatUnitsSafe(productAmountIn, decimals),
+          amountOut: formatUnitsSafe(baseAmountOut, 18),
+          timestamp: Date.now()
+        });
 
-      const reserveProductNum = formatUnitsSafe(newReserveProduct, decimals);
-      const reserveBaseNum = formatUnitsSafe(newReserveBase, 18);
+        const reserveProductNum = formatUnitsSafe(newReserveProduct, decimals);
+        const reserveBaseNum = formatUnitsSafe(newReserveBase, 18);
 
-      upsertPool(productToken, {
-        reserveBase: reserveBaseNum,
-        reserveProduct: reserveProductNum,
-        spotPrice: reserveProductNum > 0 ? reserveBaseNum / reserveProductNum : 0
-      });
+        upsertPool(productToken, {
+          reserveBase: reserveBaseNum,
+          reserveProduct: reserveProductNum,
+          spotPrice: reserveProductNum > 0 ? reserveBaseNum / reserveProductNum : 0
+        });
 
-      await refreshCompetitionStatus();
-      await updateRanking();
+        await refreshCompetitionStatus();
+        await updateRanking();
+      } catch (error) {
+        console.error("Sold event handler error:", error.message);
+      }
     }
   );
 
   exchange.on("CompetitionStarted", async (startTime, endTime) => {
-    setCompetitionStatus({
-      competitionStatus: "ACTIVE",
-      competitionStartTime: Number(startTime),
-      competitionEndTime: Number(endTime)
-    });
+    try {
+      setCompetitionStatus({
+        competitionStatus: "ACTIVE",
+        competitionStartTime: Number(startTime),
+        competitionEndTime: Number(endTime)
+      });
+    } catch (error) {
+      console.error("CompetitionStarted event handler error:", error.message);
+    }
   });
 
   exchange.on("CompetitionEnded", async (endTime) => {
-    setCompetitionStatus({
-      competitionStatus: "ENDED",
-      competitionEndTime: Number(endTime)
-    });
-    await updateRanking();
+    try {
+      setCompetitionStatus({
+        competitionStatus: "ENDED",
+        competitionEndTime: Number(endTime)
+      });
+      await updateRanking();
+    } catch (error) {
+      console.error("CompetitionEnded event handler error:", error.message);
+    }
   });
 }
 
@@ -264,11 +287,34 @@ async function updateRanking() {
     productBalancesByTrader[traderKey] = {};
 
     for (const product of state.products) {
-      const tokenContract = productContracts[product.address.toLowerCase()];
-      const balanceRaw = await tokenContract.balanceOf(trader);
+      let tokenContract;
 
-      productBalancesByTrader[traderKey][product.address.toLowerCase()] =
-        formatUnitsSafe(balanceRaw, product.decimals);
+      try {
+        tokenContract = getTokenContract(product.address);
+      } catch (error) {
+        console.error(`Token contract creation failed for ${product.address}:`, error.message);
+        productBalancesByTrader[traderKey][product.address.toLowerCase()] = 0;
+        continue;
+      }
+
+      if (!tokenContract) {
+        productBalancesByTrader[traderKey][product.address.toLowerCase()] = 0;
+        continue;
+      }
+
+      try {
+        const balanceRaw = await tokenContract.balanceOf(trader);
+
+        productBalancesByTrader[traderKey][product.address.toLowerCase()] =
+          formatUnitsSafe(balanceRaw, product.decimals);
+      } catch (error) {
+        console.error(
+          `balanceOf failed for trader ${trader} and product ${product.address}:`,
+          error.message
+        );
+
+        productBalancesByTrader[traderKey][product.address.toLowerCase()] = 0;
+      }
     }
   }
 
