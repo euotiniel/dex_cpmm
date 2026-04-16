@@ -11,6 +11,8 @@ const state = {
     decimals: 18
   },
 
+  traders: [],
+
   products: [],
 
   pools: {},
@@ -38,16 +40,24 @@ function setCompetitionStatus(status) {
   state.lastUpdatedAt = Date.now();
 }
 
+function setTraders(traders) {
+  state.traders = traders;
+  state.lastUpdatedAt = Date.now();
+}
+
 function setProducts(products) {
   state.products = products;
   state.lastUpdatedAt = Date.now();
 }
 
 function upsertPool(productAddress, poolData) {
-  state.pools[productAddress.toLowerCase()] = {
-    ...(state.pools[productAddress.toLowerCase()] || {}),
+  const key = productAddress.toLowerCase();
+
+  state.pools[key] = {
+    ...(state.pools[key] || {}),
     ...poolData
   };
+
   state.lastUpdatedAt = Date.now();
 }
 
@@ -74,6 +84,7 @@ module.exports = {
   state,
   setBaseToken,
   setCompetitionStatus,
+  setTraders,
   setProducts,
   upsertPool,
   addTrade,

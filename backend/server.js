@@ -2,9 +2,17 @@ import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import fs from "fs";
+import { createRequire } from "module";
 
-import { getState } from "./state.js";
-import { initBlockchain, refreshAll, setTrackedTraders, setTraderMeta } from "./blockchain.js";
+const require = createRequire(import.meta.url);
+
+const { getState } = require("./state.js");
+const {
+  initBlockchain,
+  refreshAll,
+  setTrackedTraders,
+  setTraderMeta
+} = require("./blockchain.js");
 
 dotenv.config();
 
@@ -34,13 +42,33 @@ async function bootstrap() {
     }
   }, 5000);
 
-  app.get("/state", (req, res) => {
-    res.json(getState());
+  app.get("/status", (req, res) => {
+    const state = getState();
+    res.json(state.status);
+  });
+
+  app.get("/products", (req, res) => {
+    const state = getState();
+    res.json(state.products);
+  });
+
+  app.get("/pools", (req, res) => {
+    const state = getState();
+    res.json(state.pools);
+  });
+
+  app.get("/trades", (req, res) => {
+    const state = getState();
+    res.json(state.trades);
   });
 
   app.get("/ranking", (req, res) => {
     const state = getState();
     res.json(state.ranking);
+  });
+
+  app.get("/state", (req, res) => {
+    res.json(getState());
   });
 
   const port = Number(process.env.PORT || 3001);

@@ -29,6 +29,16 @@ function formatTimestamp(unixSeconds) {
   return date.toLocaleString("pt-PT");
 }
 
+function buildTraderNameMap(ranking) {
+  const map = {};
+
+  for (const item of ranking) {
+    map[item.trader.toLowerCase()] = item.name || item.trader;
+  }
+
+  return map;
+}
+
 function renderStatus(status) {
   competitionStatusEl.textContent = status.competitionStatus || "UNKNOWN";
 
@@ -82,16 +92,20 @@ function renderProducts(products, pools) {
     .join("");
 }
 
-function renderTrades(trades) {
+function renderTrades(trades, traderNameMap) {
   if (!trades.length) {
     tradesContainer.innerHTML = `<p class="empty">Ainda não há trades.</p>`;
     return;
   }
 
   tradesContainer.innerHTML = trades
-    .slice(0, 5)
+    .slice(0, 12)
     .map((trade) => {
       const typeClass = trade.type === "BUY" ? "buy" : "sell";
+      const traderName =
+        trade.traderName ||
+        traderNameMap[trade.trader.toLowerCase()] ||
+        shortAddress(trade.trader);
 
       return `
         <div class="trade-item">
@@ -101,7 +115,7 @@ function renderTrades(trades) {
           </div>
 
           <div class="trade-details">
-            <div><strong>Trader:</strong> ${shortAddress(trade.trader)}</div>
+            <div><strong>Bot:</strong> ${traderName}</div>
             <div><strong>Product:</strong> ${trade.productSymbol}</div>
             <div><strong>Amount In:</strong> ${formatNumber(trade.amountIn, 6)}</div>
             <div><strong>Amount Out:</strong> ${formatNumber(trade.amountOut, 6)}</div>
@@ -131,7 +145,7 @@ function renderRanking(ranking, competitionStatus) {
         <tr class="${isWinner ? "final-winner" : ""}">
           <td><span class="rank-badge">${index + 1}</span></td>
           <td>
-            <div>${shortAddress(item.trader)}</div>
+            <div>${item.name || shortAddress(item.trader)}</div>
             <div class="address">${item.trader}</div>
           </td>
           <td>${formatNumber(item.baseBalance, 4)}</td>
@@ -155,10 +169,11 @@ async function fetchState() {
 async function refreshDashboard() {
   try {
     const state = await fetchState();
+    const traderNameMap = buildTraderNameMap(state.ranking || []);
 
     renderStatus(state.status);
     renderProducts(state.products, state.pools);
-    renderTrades(state.trades);
+    renderTrades(state.trades, traderNameMap);
     renderRanking(state.ranking, state.status.competitionStatus);
   } catch (error) {
     console.error(error);
