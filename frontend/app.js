@@ -7,9 +7,8 @@ const tradesContainer = document.getElementById("trades-container");
 const rankingBody = document.getElementById("ranking-body");
 
 function formatNumber(value, digits = 4) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "-";
-  }
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  
 
   return Number(value).toLocaleString("pt-PT", {
     minimumFractionDigits: 0,
@@ -159,9 +158,7 @@ function renderRanking(ranking, competitionStatus) {
 
 async function fetchState() {
   const response = await fetch(`${API_BASE}/state`);
-  if (!response.ok) {
-    throw new Error("Falha ao buscar estado do backend");
-  }
+  if (!response.ok) throw new Error("Falha ao buscar estado do backend");
 
   return response.json();
 }

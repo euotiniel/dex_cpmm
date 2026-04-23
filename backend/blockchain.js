@@ -48,9 +48,8 @@ function mapCompetitionStatus(statusNumber) {
 function getTokenContract(address) {
   const key = address.toLowerCase();
 
-  if (!productContracts[key]) {
-    productContracts[key] = new ethers.Contract(address, TOKEN_ABI, provider);
-  }
+  if (!productContracts[key]) productContracts[key] = new ethers.Contract(address, TOKEN_ABI, provider);
+
 
   return productContracts[key];
 }

@@ -64,9 +64,8 @@ function upsertPool(productAddress, poolData) {
 function addTrade(trade) {
   state.trades.unshift(trade);
 
-  if (state.trades.length > 200) {
-    state.trades = state.trades.slice(0, 200);
-  }
+  if (state.trades.length > 200) state.trades = state.trades.slice(0, 200);
+
 
   state.lastUpdatedAt = Date.now();
 }

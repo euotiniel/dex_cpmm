@@ -43,9 +43,7 @@ function buildEnv(env) {
 function writeEnv(newValues) {
   let env = {};
 
-  if (fs.existsSync(ENV_PATH)) {
-    env = parseEnv(fs.readFileSync(ENV_PATH, "utf-8"));
-  }
+  if (fs.existsSync(ENV_PATH)) env = parseEnv(fs.readFileSync(ENV_PATH, "utf-8"));
 
   env = {
     ...env,
@@ -113,9 +111,7 @@ function startHardhatNode() {
     child.on("error", reject);
 
     child.on("exit", (code) => {
-      if (!resolved) {
-        reject(new Error(`hardhat node exited early with code ${code}`));
-      }
+      if (!resolved) reject(new Error(`hardhat node exited early with code ${code}`));
     });
   });
 }

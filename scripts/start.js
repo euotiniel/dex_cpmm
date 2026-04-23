@@ -1,7 +1,6 @@
 import hre from "hardhat";
 import "dotenv/config";
 
-// pega argumentos tipo --duration=300
 function getArg(name, defaultValue) {
   const arg = process.argv.find((a) => a.startsWith(`--${name}=`));
   if (!arg) return defaultValue;
@@ -11,15 +10,11 @@ function getArg(name, defaultValue) {
 async function main() {
   const duration = parseInt(getArg("duration", "300")); // default: 5 min
 
-  if (!duration || duration <= 0) {
-    throw new Error("Invalid duration. Use --duration=SECONDS");
-  }
+  if (!duration || duration <= 0) throw new Error("Invalid duration. Use --duration=SECONDS");
 
   const exchangeAddress = process.env.EXCHANGE_ADDRESS;
 
-  if (!exchangeAddress) {
-    throw new Error("Missing EXCHANGE_ADDRESS in .env");
-  }
+  if (!exchangeAddress) throw new Error("Missing EXCHANGE_ADDRESS in .env");
 
   const exchange = await hre.ethers.getContractAt(
     "CPMMExchange",
@@ -27,7 +22,7 @@ async function main() {
   );
 
   console.log("=================================");
-  console.log("🚀 Starting Competition...");
+  console.log("Starting Competition...");
   console.log("Duration:", duration, "seconds");
 
   const tx = await exchange.startCompetition(duration);
