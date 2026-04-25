@@ -1,16 +1,11 @@
 import hre from "hardhat";
 import "dotenv/config";
 
-function getArg(name, defaultValue) {
-  const arg = process.argv.find((a) => a.startsWith(`--${name}=`));
-  if (!arg) return defaultValue;
-  return arg.split("=")[1];
-}
-
 async function main() {
-  const duration = parseInt(getArg("duration", "300")); // default: 5 min
+  // Read duration from env var (set DURATION=300 in .env or prefix the command)
+  const duration = parseInt(process.env.DURATION || "300");
 
-  if (!duration || duration <= 0) throw new Error("Invalid duration. Use --duration=SECONDS");
+  if (!duration || duration <= 0) throw new Error("Invalid duration. Set DURATION=<seconds> in .env or as env var");
 
   const exchangeAddress = process.env.EXCHANGE_ADDRESS;
 

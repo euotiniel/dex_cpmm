@@ -53,9 +53,21 @@ function writeEnv(newValues) {
   fs.writeFileSync(ENV_PATH, buildEnv(env), "utf-8");
 }
 
+const BOT_NAMES = [
+  "Bot de Ruído",
+  "Bot de Choque",
+  "Bot de Tendência",
+  "Bot Conservador",
+  "Bot de Momentum",
+  "Bot de Reversão à Média",
+];
+
 function writeTradersJson(addresses) {
   const payload = {
-    traders: addresses,
+    traders: addresses.map((address, i) => ({
+      address,
+      name: BOT_NAMES[i] || `Bot ${i + 1}`,
+    })),
   };
 
   fs.writeFileSync(TRADERS_PATH, JSON.stringify(payload, null, 2), "utf-8");
