@@ -16,9 +16,10 @@ const state = {
   traders: [],
   products: [],
   pools: {},
-  priceHistory: {},  // { [address_lc]: [{t: ms, p: float}] }
-  initialPrices: {}, // { [address_lc]: float } — price at first observation
-  volume: {},        // { [address_lc]: float } — cumulative base CASH traded
+  priceHistory: {},
+  initialPrices: {},
+  volume: {},
+  traderStats: {},
   trades: [],
   ranking: [],
   lastUpdatedAt: null,
@@ -36,6 +37,24 @@ export function setCompetitionStatus(status) {
 
 export function setTraders(traders) {
   state.traders = traders;
+
+  for (const trader of traders) {
+    const key = trader.address.toLowerCase();
+    if (!state.traderStats[key]) {
+      state.traderStats[key] = {
+        trader: trader.address,
+        name: trader.name,
+        totalTrades: 0,
+        buys: 0,
+        sells: 0,
+        volume: 0,
+        lastTradeAt: null,
+      };
+    } else {
+      state.traderStats[key].name = trader.name;
+    }
+  }
+
   state.lastUpdatedAt = Date.now();
 }
 
@@ -49,15 +68,14 @@ export function upsertPool(productAddress, poolData) {
   state.pools[key] = { ...(state.pools[key] || {}), ...poolData };
 
   if (poolData.spotPrice !== undefined && poolData.spotPrice > 0) {
-    // Track initial price (only set once)
     if (state.initialPrices[key] === undefined) {
       state.initialPrices[key] = poolData.spotPrice;
     }
 
-    // Append to price history
     if (!state.priceHistory[key]) state.priceHistory[key] = [];
     const history = state.priceHistory[key];
     const last = history[history.length - 1];
+
     if (!last || last.p !== poolData.spotPrice) {
       history.push({ t: Date.now(), p: poolData.spotPrice });
       if (history.length > MAX_PRICE_HISTORY) {
@@ -72,16 +90,40 @@ export function upsertPool(productAddress, poolData) {
 
 export function addTrade(trade) {
   state.trades.unshift(trade);
-  if (state.trades.length > MAX_TRADES) state.trades = state.trades.slice(0, MAX_TRADES);
-
-  // Update per-product volume (base CASH in for buys, base CASH out for sells)
-  const key = trade.productToken.toLowerCase();
-  if (!state.volume[key]) state.volume[key] = 0;
-  if (trade.type === "BUY") {
-    state.volume[key] += Number(trade.amountIn) || 0;
-  } else {
-    state.volume[key] += Number(trade.amountOut) || 0;
+  if (state.trades.length > MAX_TRADES) {
+    state.trades = state.trades.slice(0, MAX_TRADES);
   }
+
+  const productKey = trade.productToken.toLowerCase();
+  if (!state.volume[productKey]) state.volume[productKey] = 0;
+
+  const volumeValue =
+    trade.type === "BUY"
+      ? Number(trade.amountIn) || 0
+      : Number(trade.amountOut) || 0;
+
+  state.volume[productKey] += volumeValue;
+
+  const traderKey = trade.trader.toLowerCase();
+
+  if (!state.traderStats[traderKey]) {
+    state.traderStats[traderKey] = {
+      trader: trade.trader,
+      name: trade.traderName || trade.trader,
+      totalTrades: 0,
+      buys: 0,
+      sells: 0,
+      volume: 0,
+      lastTradeAt: null,
+    };
+  }
+
+  state.traderStats[traderKey].totalTrades += 1;
+  state.traderStats[traderKey].volume += volumeValue;
+  state.traderStats[traderKey].lastTradeAt = trade.timestamp;
+
+  if (trade.type === "BUY") state.traderStats[traderKey].buys += 1;
+  if (trade.type === "SELL") state.traderStats[traderKey].sells += 1;
 
   state.lastUpdatedAt = Date.now();
   emitter.emit("changed");

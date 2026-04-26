@@ -27,9 +27,11 @@ function parseEnvFile(content) {
 }
 
 function buildEnvContent(envObject) {
-  return Object.entries(envObject)
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n") + "\n";
+  return (
+    Object.entries(envObject)
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n") + "\n"
+  );
 }
 
 function updateEnvFile(newValues) {
@@ -45,8 +47,7 @@ function updateEnvFile(newValues) {
     ...newValues,
   };
 
-  const newContent = buildEnvContent(env);
-  fs.writeFileSync(ENV_PATH, newContent, "utf-8");
+  fs.writeFileSync(ENV_PATH, buildEnvContent(env), "utf-8");
 }
 
 async function main() {
@@ -65,18 +66,34 @@ async function main() {
   const products = [];
 
   for (let i = 1; i <= 5; i++) {
-    const product = await Token.deploy(`Product ${i}`, `PROD${i}`, deployer.address);
+    const product = await Token.deploy(
+      `Product ${i}`,
+      `PROD${i}`,
+      deployer.address
+    );
+
     await product.waitForDeployment();
     products.push(product);
   }
 
+  const cashAddress = await cash.getAddress();
+
+  const feeTreasury = deployer.address;
+
   const Exchange = await hre.ethers.getContractFactory("CPMMExchange");
-  const exchange = await Exchange.deploy(await cash.getAddress(), deployer.address);
+
+  const exchange = await Exchange.deploy(
+    cashAddress,
+    deployer.address,
+    feeTreasury
+  );
+
   await exchange.waitForDeployment();
 
   const deployedAddresses = {
-    CASH_ADDRESS: (await cash.getAddress()).toLowerCase(),
+    CASH_ADDRESS: cashAddress.toLowerCase(),
     EXCHANGE_ADDRESS: (await exchange.getAddress()).toLowerCase(),
+    FEE_TREASURY_ADDRESS: feeTreasury.toLowerCase(),
     PROD1_ADDRESS: (await products[0].getAddress()).toLowerCase(),
     PROD2_ADDRESS: (await products[1].getAddress()).toLowerCase(),
     PROD3_ADDRESS: (await products[2].getAddress()).toLowerCase(),
@@ -86,6 +103,7 @@ async function main() {
 
   console.log("CASH:", deployedAddresses.CASH_ADDRESS);
   console.log("EXCHANGE:", deployedAddresses.EXCHANGE_ADDRESS);
+  console.log("FEE_TREASURY:", deployedAddresses.FEE_TREASURY_ADDRESS);
   console.log("PROD1:", deployedAddresses.PROD1_ADDRESS);
   console.log("PROD2:", deployedAddresses.PROD2_ADDRESS);
   console.log("PROD3:", deployedAddresses.PROD3_ADDRESS);

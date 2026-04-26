@@ -13,6 +13,19 @@ const BOT_KEYS = [
   "BOT_CONSERVATIVE_PK",
   "BOT_MOMENTUM_PK",
   "BOT_MEAN_REVERSION_PK",
+  "BOT_MARKET_MAKER_PK",
+  "BOT_ARBITRAGE_PK",
+];
+
+const BOT_NAMES = [
+  "Bot de Ruído",
+  "Bot de Choque",
+  "Bot de Tendência",
+  "Bot Conservador",
+  "Bot de Momentum",
+  "Bot de Reversão à Média",
+  "Bot Market Maker",
+  "Bot de Arbitragem",
 ];
 
 function parseEnv(content) {
@@ -36,14 +49,16 @@ function parseEnv(content) {
 
 function buildEnv(env) {
   return Object.entries(env)
-    .map(([k, v]) => `${k}=${v}`)
+    .map(([key, value]) => `${key}=${value}`)
     .join("\n") + "\n";
 }
 
 function writeEnv(newValues) {
   let env = {};
 
-  if (fs.existsSync(ENV_PATH)) env = parseEnv(fs.readFileSync(ENV_PATH, "utf-8"));
+  if (fs.existsSync(ENV_PATH)) {
+    env = parseEnv(fs.readFileSync(ENV_PATH, "utf-8"));
+  }
 
   env = {
     ...env,
@@ -53,20 +68,11 @@ function writeEnv(newValues) {
   fs.writeFileSync(ENV_PATH, buildEnv(env), "utf-8");
 }
 
-const BOT_NAMES = [
-  "Bot de Ruído",
-  "Bot de Choque",
-  "Bot de Tendência",
-  "Bot Conservador",
-  "Bot de Momentum",
-  "Bot de Reversão à Média",
-];
-
 function writeTradersJson(addresses) {
   const payload = {
-    traders: addresses.map((address, i) => ({
+    traders: addresses.map((address, index) => ({
       address,
-      name: BOT_NAMES[i] || `Bot ${i + 1}`,
+      name: BOT_NAMES[index] || `Bot ${index + 1}`,
     })),
   };
 
@@ -95,21 +101,22 @@ function startHardhatNode() {
       const pkRegex = /Private Key:\s+(0x[a-fA-F0-9]{64})/g;
 
       let match;
+
       while ((match = accountRegex.exec(stdoutBuffer)) !== null) {
-        const addr = match[1].toLowerCase();
-        if (!accounts.includes(addr)) accounts.push(addr);
+        const address = match[1].toLowerCase();
+        if (!accounts.includes(address)) accounts.push(address);
       }
 
       while ((match = pkRegex.exec(stdoutBuffer)) !== null) {
-        const pk = match[1].toLowerCase();
-        if (!privateKeys.includes(pk)) privateKeys.push(pk);
+        const privateKey = match[1].toLowerCase();
+        if (!privateKeys.includes(privateKey)) privateKeys.push(privateKey);
       }
 
       if (
         !resolved &&
         stdoutBuffer.includes("Started HTTP and WebSocket JSON-RPC server") &&
-        accounts.length >= 7 &&
-        privateKeys.length >= 7
+        accounts.length >= 9 &&
+        privateKeys.length >= 9
       ) {
         resolved = true;
         resolve({ child, accounts, privateKeys });
@@ -123,7 +130,9 @@ function startHardhatNode() {
     child.on("error", reject);
 
     child.on("exit", (code) => {
-      if (!resolved) reject(new Error(`hardhat node exited early with code ${code}`));
+      if (!resolved) {
+        reject(new Error(`hardhat node exited early with code ${code}`));
+      }
     });
   });
 }
@@ -191,8 +200,8 @@ async function main() {
 
   const deployed = await runDeploy();
 
-  const botAddresses = accounts.slice(1, 7);
-  const botPrivateKeys = privateKeys.slice(1, 7);
+  const botAddresses = accounts.slice(1, 9);
+  const botPrivateKeys = privateKeys.slice(1, 9);
 
   const envValues = {
     RPC_URL: "http://127.0.0.1:8545",

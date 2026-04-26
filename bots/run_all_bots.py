@@ -10,6 +10,7 @@ BOT_MODULES = [
     "bots.conservativeBot",
     "bots.momentumBot",
     "bots.meanReversionBot",
+    "bots.marketMakerBot",
 ]
 
 processes = []

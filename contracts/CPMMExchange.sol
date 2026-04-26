@@ -8,10 +8,27 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract CPMMExchange is Ownable {
     using SafeERC20 for IERC20;
 
-    uint256 public constant FEE_BPS = 30; // 0.3%
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
+    // Fee base: 0.3%
+    uint256 public constant BASE_FEE_BPS = 30;
+
+    // Fee maxima por overtrading: 1.5%
+    uint256 public constant MAX_FEE_BPS = 150;
+
+    // Cooldown minimo entre trades da mesma wallet
+    uint256 public constant TRADE_COOLDOWN = 2 seconds;
+
+    // Janela para contar excesso de trades
+    uint256 public constant TRADE_WINDOW = 30 seconds;
+
+    // Impacto maximo por trade: 10% da reserva de saida
+    uint256 public constant MAX_PRICE_IMPACT_BPS = 1000;
+
     IERC20 public immutable baseToken;
+
+    // Para onde vao as fees. Isto cria drenagem real da competicao.
+    address public feeTreasury;
 
     enum CompetitionStatus {
         NOT_STARTED,
@@ -37,6 +54,10 @@ contract CPMMExchange is Ownable {
     mapping(address => bool) public isTrader;
     uint256 public traderCount;
 
+    mapping(address => uint256) public lastTradeAt;
+    mapping(address => uint256) public tradeWindowStart;
+    mapping(address => uint256) public tradesInWindow;
+
     event TraderRegistered(address indexed trader);
     event TraderRemoved(address indexed trader);
 
@@ -61,6 +82,27 @@ contract CPMMExchange is Ownable {
     );
 
     event CompetitionEnded(uint256 indexed endTime);
+
+    event TradePenalty(
+        address indexed trader,
+        uint256 feeBps,
+        uint256 tradesInWindow,
+        uint256 timestamp
+    );
+
+    event FeeTreasuryUpdated(
+        address indexed oldTreasury,
+        address indexed newTreasury
+    );
+
+    event FeeCollected(
+        address indexed trader,
+        address indexed token,
+        uint256 grossAmountIn,
+        uint256 feeAmount,
+        uint256 netAmountIn,
+        uint256 feeBps
+    );
 
     event Bought(
         address indexed trader,
@@ -90,10 +132,27 @@ contract CPMMExchange is Ownable {
         _;
     }
 
-    constructor(address _baseToken, address initialOwner) Ownable(initialOwner) {
+    constructor(
+        address _baseToken,
+        address initialOwner,
+        address _feeTreasury
+    ) Ownable(initialOwner) {
         require(_baseToken != address(0), "Invalid base token address");
+        require(initialOwner != address(0), "Invalid owner address");
+        require(_feeTreasury != address(0), "Invalid fee treasury address");
+
         baseToken = IERC20(_baseToken);
+        feeTreasury = _feeTreasury;
         competitionStatus = CompetitionStatus.NOT_STARTED;
+    }
+
+    function setFeeTreasury(address newFeeTreasury) external onlyOwner {
+        require(newFeeTreasury != address(0), "Invalid fee treasury address");
+
+        address oldTreasury = feeTreasury;
+        feeTreasury = newFeeTreasury;
+
+        emit FeeTreasuryUpdated(oldTreasury, newFeeTreasury);
     }
 
     function registerTrader(address trader) external onlyOwner {
@@ -167,7 +226,6 @@ contract CPMMExchange is Ownable {
         require(pool.exists, "Pool does not exist");
         require(baseAmount > 0, "Base amount must be > 0");
         require(productAmount > 0, "Product amount must be > 0");
-        // Guard against corrupted pool state
         require(pool.reserveBase > 0 && pool.reserveProduct > 0, "Pool reserves are zero");
 
         baseToken.safeTransferFrom(msg.sender, address(this), baseAmount);
@@ -176,7 +234,13 @@ contract CPMMExchange is Ownable {
         pool.reserveBase += baseAmount;
         pool.reserveProduct += productAmount;
 
-        emit LiquidityAdded(productToken, baseAmount, productAmount, pool.reserveBase, pool.reserveProduct);
+        emit LiquidityAdded(
+            productToken,
+            baseAmount,
+            productAmount,
+            pool.reserveBase,
+            pool.reserveProduct
+        );
     }
 
     function startCompetition(uint256 durationSeconds) external onlyOwner {
@@ -190,16 +254,16 @@ contract CPMMExchange is Ownable {
         competitionStartTime = block.timestamp;
         competitionEndTime = block.timestamp + durationSeconds;
 
-        emit CompetitionStarted(competitionStartTime, competitionEndTime, durationSeconds);
+        emit CompetitionStarted(
+            competitionStartTime,
+            competitionEndTime,
+            durationSeconds
+        );
     }
 
-    // Only callable by owner after competitionEndTime has passed
     function endCompetition() external onlyOwner {
         require(competitionStatus == CompetitionStatus.ACTIVE, "Competition is not active");
-        require(
-            block.timestamp >= competitionEndTime,
-            "Competition timer has not expired yet"
-        );
+        require(block.timestamp >= competitionEndTime, "Competition timer has not expired yet");
 
         competitionStatus = CompetitionStatus.ENDED;
 
@@ -209,7 +273,7 @@ contract CPMMExchange is Ownable {
     function buy(
         address productToken,
         uint256 baseAmountIn,
-        uint256 amountOutMin // slippage protection
+        uint256 amountOutMin
     )
         external
         onlyRegisteredTrader
@@ -221,25 +285,56 @@ contract CPMMExchange is Ownable {
         Pool storage pool = pools[productToken];
         require(pool.exists, "Pool does not exist");
 
-        productAmountOut = getAmountOut(baseAmountIn, pool.reserveBase, pool.reserveProduct);
+        uint256 feeBps = _updateTraderActivity(msg.sender);
+        (uint256 netBaseAmountIn, uint256 feeAmount) = _splitFee(baseAmountIn, feeBps);
+
+        productAmountOut = _getAmountOutNoFee(
+            netBaseAmountIn,
+            pool.reserveBase,
+            pool.reserveProduct
+        );
 
         require(productAmountOut > 0, "Output amount is zero");
         require(productAmountOut < pool.reserveProduct, "Insufficient product liquidity");
+
+        _validatePriceImpact(productAmountOut, pool.reserveProduct);
+
         require(productAmountOut >= amountOutMin, "Slippage: insufficient output amount");
 
         baseToken.safeTransferFrom(msg.sender, address(this), baseAmountIn);
+
+        if (feeAmount > 0) {
+            baseToken.safeTransfer(feeTreasury, feeAmount);
+
+            emit FeeCollected(
+                msg.sender,
+                address(baseToken),
+                baseAmountIn,
+                feeAmount,
+                netBaseAmountIn,
+                feeBps
+            );
+        }
+
         pool.productToken.safeTransfer(msg.sender, productAmountOut);
 
-        pool.reserveBase += baseAmountIn;
+        pool.reserveBase += netBaseAmountIn;
         pool.reserveProduct -= productAmountOut;
 
-        emit Bought(msg.sender, productToken, baseAmountIn, productAmountOut, pool.reserveBase, pool.reserveProduct);
+        emit Bought(
+            msg.sender,
+            productToken,
+            baseAmountIn,
+            productAmountOut,
+            pool.reserveBase,
+            pool.reserveProduct
+        );
     }
 
     function sell(
         address productToken,
         uint256 productAmountIn,
-        uint256 amountOutMin // slippage protection
+        uint256 amountOutMin
     )
         external
         onlyRegisteredTrader
@@ -251,36 +346,147 @@ contract CPMMExchange is Ownable {
         Pool storage pool = pools[productToken];
         require(pool.exists, "Pool does not exist");
 
-        baseAmountOut = getAmountOut(productAmountIn, pool.reserveProduct, pool.reserveBase);
+        uint256 feeBps = _updateTraderActivity(msg.sender);
+        (uint256 netProductAmountIn, uint256 feeAmount) = _splitFee(productAmountIn, feeBps);
+
+        baseAmountOut = _getAmountOutNoFee(
+            netProductAmountIn,
+            pool.reserveProduct,
+            pool.reserveBase
+        );
 
         require(baseAmountOut > 0, "Output amount is zero");
         require(baseAmountOut < pool.reserveBase, "Insufficient base liquidity");
+
+        _validatePriceImpact(baseAmountOut, pool.reserveBase);
+
         require(baseAmountOut >= amountOutMin, "Slippage: insufficient output amount");
 
         pool.productToken.safeTransferFrom(msg.sender, address(this), productAmountIn);
+
+        if (feeAmount > 0) {
+            pool.productToken.safeTransfer(feeTreasury, feeAmount);
+
+            emit FeeCollected(
+                msg.sender,
+                productToken,
+                productAmountIn,
+                feeAmount,
+                netProductAmountIn,
+                feeBps
+            );
+        }
+
         baseToken.safeTransfer(msg.sender, baseAmountOut);
 
-        pool.reserveProduct += productAmountIn;
+        pool.reserveProduct += netProductAmountIn;
         pool.reserveBase -= baseAmountOut;
 
-        emit Sold(msg.sender, productToken, productAmountIn, baseAmountOut, pool.reserveBase, pool.reserveProduct);
+        emit Sold(
+            msg.sender,
+            productToken,
+            productAmountIn,
+            baseAmountOut,
+            pool.reserveBase,
+            pool.reserveProduct
+        );
+    }
+
+    function _updateTraderActivity(address trader) internal returns (uint256 feeBps) {
+        require(
+            block.timestamp >= lastTradeAt[trader] + TRADE_COOLDOWN,
+            "Cooldown: trading too fast"
+        );
+
+        if (block.timestamp > tradeWindowStart[trader] + TRADE_WINDOW) {
+            tradeWindowStart[trader] = block.timestamp;
+            tradesInWindow[trader] = 0;
+        }
+
+        tradesInWindow[trader] += 1;
+        lastTradeAt[trader] = block.timestamp;
+
+        feeBps = BASE_FEE_BPS;
+
+        if (tradesInWindow[trader] > 3) {
+            feeBps += (tradesInWindow[trader] - 3) * 20;
+        }
+
+        if (feeBps > MAX_FEE_BPS) {
+            feeBps = MAX_FEE_BPS;
+        }
+
+        emit TradePenalty(
+            trader,
+            feeBps,
+            tradesInWindow[trader],
+            block.timestamp
+        );
+    }
+
+    function _splitFee(
+        uint256 amountIn,
+        uint256 feeBps
+    )
+        internal
+        pure
+        returns (uint256 netAmountIn, uint256 feeAmount)
+    {
+        require(amountIn > 0, "Invalid input amount");
+        require(feeBps < BPS_DENOMINATOR, "Invalid fee");
+
+        feeAmount = (amountIn * feeBps) / BPS_DENOMINATOR;
+        netAmountIn = amountIn - feeAmount;
+    }
+
+    function _getAmountOutNoFee(
+        uint256 amountIn,
+        uint256 reserveIn,
+        uint256 reserveOut
+    )
+        internal
+        pure
+        returns (uint256 amountOut)
+    {
+        require(amountIn > 0, "Invalid input amount");
+        require(reserveIn > 0, "Invalid reserveIn");
+        require(reserveOut > 0, "Invalid reserveOut");
+
+        uint256 numerator = amountIn * reserveOut;
+        uint256 denominator = reserveIn + amountIn;
+
+        amountOut = numerator / denominator;
+    }
+
+    function _validatePriceImpact(
+        uint256 amountOut,
+        uint256 reserveOut
+    ) internal pure {
+        uint256 impactBps = (amountOut * BPS_DENOMINATOR) / reserveOut;
+        require(impactBps <= MAX_PRICE_IMPACT_BPS, "Price impact too high");
     }
 
     function isCompetitionActive() public view returns (bool) {
         if (competitionStatus != CompetitionStatus.ACTIVE) return false;
         if (competitionEndTime == 0) return false;
+
         return block.timestamp < competitionEndTime;
     }
 
     function getCurrentCompetitionStatus() public view returns (CompetitionStatus) {
-        if (competitionStatus == CompetitionStatus.ACTIVE && block.timestamp >= competitionEndTime) {
+        if (
+            competitionStatus == CompetitionStatus.ACTIVE &&
+            block.timestamp >= competitionEndTime
+        ) {
             return CompetitionStatus.ENDED;
         }
+
         return competitionStatus;
     }
 
     function getRemainingTime() external view returns (uint256) {
         if (!isCompetitionActive()) return 0;
+
         return competitionEndTime - block.timestamp;
     }
 
@@ -289,19 +495,45 @@ contract CPMMExchange is Ownable {
         uint256 reserveIn,
         uint256 reserveOut
     ) public pure returns (uint256 amountOut) {
-        require(amountIn > 0, "Invalid input amount");
-        require(reserveIn > 0, "Invalid reserveIn");
-        require(reserveOut > 0, "Invalid reserveOut");
+        uint256 netAmountIn = amountIn - ((amountIn * BASE_FEE_BPS) / BPS_DENOMINATOR);
 
-        uint256 amountInWithFee = amountIn * (BPS_DENOMINATOR - FEE_BPS);
-        uint256 numerator = amountInWithFee * reserveOut;
-        uint256 denominator = (reserveIn * BPS_DENOMINATOR) + amountInWithFee;
+        return _getAmountOutNoFee(netAmountIn, reserveIn, reserveOut);
+    }
 
-        amountOut = numerator / denominator;
+    function getAmountOutWithFeeBps(
+        uint256 amountIn,
+        uint256 reserveIn,
+        uint256 reserveOut,
+        uint256 feeBps
+    ) external pure returns (uint256 amountOut) {
+        (uint256 netAmountIn, ) = _splitFee(amountIn, feeBps);
+
+        return _getAmountOutNoFee(netAmountIn, reserveIn, reserveOut);
+    }
+
+    function getCurrentFeeBps(address trader) external view returns (uint256 feeBps) {
+        feeBps = BASE_FEE_BPS;
+
+        uint256 currentTradesInWindow = tradesInWindow[trader];
+
+        if (block.timestamp > tradeWindowStart[trader] + TRADE_WINDOW) {
+            currentTradesInWindow = 0;
+        }
+
+        uint256 nextTradeCount = currentTradesInWindow + 1;
+
+        if (nextTradeCount > 3) {
+            feeBps += (nextTradeCount - 3) * 20;
+        }
+
+        if (feeBps > MAX_FEE_BPS) {
+            feeBps = MAX_FEE_BPS;
+        }
     }
 
     function getSpotPrice(address productToken) external view returns (uint256 priceInBase) {
         Pool storage pool = pools[productToken];
+
         require(pool.exists, "Pool does not exist");
         require(pool.reserveProduct > 0, "Invalid product reserve");
 
@@ -311,10 +543,21 @@ contract CPMMExchange is Ownable {
     function getPool(address productToken)
         external
         view
-        returns (bool exists, address token, uint256 reserveBase, uint256 reserveProduct)
+        returns (
+            bool exists,
+            address token,
+            uint256 reserveBase,
+            uint256 reserveProduct
+        )
     {
         Pool storage pool = pools[productToken];
-        return (pool.exists, address(pool.productToken), pool.reserveBase, pool.reserveProduct);
+
+        return (
+            pool.exists,
+            address(pool.productToken),
+            pool.reserveBase,
+            pool.reserveProduct
+        );
     }
 
     function getProductTokens() external view returns (address[] memory) {
@@ -332,8 +575,16 @@ contract CPMMExchange is Ownable {
     function getCompetitionStatus()
         external
         view
-        returns (CompetitionStatus status, uint256 startTime, uint256 endTime)
+        returns (
+            CompetitionStatus status,
+            uint256 startTime,
+            uint256 endTime
+        )
     {
-        return (getCurrentCompetitionStatus(), competitionStartTime, competitionEndTime);
+        return (
+            getCurrentCompetitionStatus(),
+            competitionStartTime,
+            competitionEndTime
+        );
     }
 }

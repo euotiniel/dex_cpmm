@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+
 import {
   setBaseToken,
   setCompetitionStatus,
@@ -9,6 +10,7 @@ import {
   setRanking,
   getState,
 } from "./state.js";
+
 import { formatUnitsSafe, calculateRanking } from "./ranking.js";
 
 const EXCHANGE_ABI = [
@@ -38,8 +40,6 @@ let baseToken;
 let productContracts = {};
 let trackedTraders = [];
 let traderMetaMap = {};
-
-// Prevents overlapping periodic refresh calls
 let refreshLock = false;
 
 function mapCompetitionStatus(statusNumber) {
@@ -51,16 +51,22 @@ function mapCompetitionStatus(statusNumber) {
 
 function getTokenContract(address) {
   const key = address.toLowerCase();
+
   if (!productContracts[key]) {
     productContracts[key] = new ethers.Contract(address, TOKEN_ABI, provider);
   }
+
   return productContracts[key];
 }
 
 export async function initBlockchain() {
   provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 
-  exchange = new ethers.Contract(process.env.EXCHANGE_ADDRESS, EXCHANGE_ABI, provider);
+  exchange = new ethers.Contract(
+    process.env.EXCHANGE_ADDRESS,
+    EXCHANGE_ABI,
+    provider
+  );
 
   const baseTokenAddress = await exchange.baseToken();
   baseToken = new ethers.Contract(baseTokenAddress, TOKEN_ABI, provider);
@@ -69,6 +75,7 @@ export async function initBlockchain() {
   const baseDecimals = await baseToken.decimals();
 
   setBaseToken(baseTokenAddress, baseSymbol, Number(baseDecimals));
+
   setTraders(
     trackedTraders.map((address) => ({
       address,
@@ -85,7 +92,9 @@ export async function initBlockchain() {
 }
 
 async function refreshCompetitionStatus() {
-  const [statusRaw, startTimeRaw, endTimeRaw] = await exchange.getCompetitionStatus();
+  const [statusRaw, startTimeRaw, endTimeRaw] =
+    await exchange.getCompetitionStatus();
+
   setCompetitionStatus({
     competitionStatus: mapCompetitionStatus(Number(statusRaw)),
     competitionStartTime: Number(startTimeRaw),
@@ -99,6 +108,7 @@ async function refreshProductsAndPools() {
 
   for (const productAddress of productAddresses) {
     const tokenContract = getTokenContract(productAddress);
+
     const symbol = await tokenContract.symbol();
     const decimals = Number(await tokenContract.decimals());
 
@@ -109,10 +119,20 @@ async function refreshProductsAndPools() {
     const reserveProduct = formatUnitsSafe(pool.reserveProduct, decimals);
     const spotPrice = formatUnitsSafe(spotPriceRaw, 18);
 
-    const productData = { address: productAddress, symbol, decimals };
+    const productData = {
+      address: productAddress,
+      symbol,
+      decimals,
+    };
+
     products.push(productData);
 
-    upsertPool(productAddress, { product: productData, reserveBase, reserveProduct, spotPrice });
+    upsertPool(productAddress, {
+      product: productData,
+      reserveBase,
+      reserveProduct,
+      spotPrice,
+    });
   }
 
   setProducts(products);
@@ -121,7 +141,14 @@ async function refreshProductsAndPools() {
 function registerEventListeners() {
   exchange.on(
     "Bought",
-    async (trader, productToken, baseAmountIn, productAmountOut, newReserveBase, newReserveProduct) => {
+    async (
+      trader,
+      productToken,
+      baseAmountIn,
+      productAmountOut,
+      newReserveBase,
+      newReserveProduct
+    ) => {
       try {
         const tokenContract = getTokenContract(productToken);
         const symbol = await tokenContract.symbol();
@@ -140,10 +167,12 @@ function registerEventListeners() {
 
         const reserveProductNum = formatUnitsSafe(newReserveProduct, decimals);
         const reserveBaseNum = formatUnitsSafe(newReserveBase, 18);
+
         upsertPool(productToken, {
           reserveBase: reserveBaseNum,
           reserveProduct: reserveProductNum,
-          spotPrice: reserveProductNum > 0 ? reserveBaseNum / reserveProductNum : 0,
+          spotPrice:
+            reserveProductNum > 0 ? reserveBaseNum / reserveProductNum : 0,
         });
 
         await updateRanking();
@@ -155,7 +184,14 @@ function registerEventListeners() {
 
   exchange.on(
     "Sold",
-    async (trader, productToken, productAmountIn, baseAmountOut, newReserveBase, newReserveProduct) => {
+    async (
+      trader,
+      productToken,
+      productAmountIn,
+      baseAmountOut,
+      newReserveBase,
+      newReserveProduct
+    ) => {
       try {
         const tokenContract = getTokenContract(productToken);
         const symbol = await tokenContract.symbol();
@@ -174,10 +210,12 @@ function registerEventListeners() {
 
         const reserveProductNum = formatUnitsSafe(newReserveProduct, decimals);
         const reserveBaseNum = formatUnitsSafe(newReserveBase, 18);
+
         upsertPool(productToken, {
           reserveBase: reserveBaseNum,
           reserveProduct: reserveProductNum,
-          spotPrice: reserveProductNum > 0 ? reserveBaseNum / reserveProductNum : 0,
+          spotPrice:
+            reserveProductNum > 0 ? reserveBaseNum / reserveProductNum : 0,
         });
 
         await updateRanking();
@@ -201,7 +239,11 @@ function registerEventListeners() {
 
   exchange.on("CompetitionEnded", async (endTime) => {
     try {
-      setCompetitionStatus({ competitionStatus: "ENDED", competitionEndTime: Number(endTime) });
+      setCompetitionStatus({
+        competitionStatus: "ENDED",
+        competitionEndTime: Number(endTime),
+      });
+
       await updateRanking();
     } catch (error) {
       console.error("CompetitionEnded event handler error:", error.message);
@@ -215,9 +257,13 @@ export function setTrackedTraders(traders) {
 
 export function setTraderMeta(traders) {
   traderMetaMap = {};
+
   for (const trader of traders) {
-    traderMetaMap[trader.address.toLowerCase()] = { name: trader.name };
+    traderMetaMap[trader.address.toLowerCase()] = {
+      name: trader.name,
+    };
   }
+
   setTraders(traders);
 }
 
@@ -225,40 +271,50 @@ async function updateRanking() {
   if (!trackedTraders.length) return [];
 
   const state = getState();
+
   const baseBalances = {};
   const productBalancesByTrader = {};
-  const productPrices = {};
-
-  for (const product of state.products) {
-    const pool = state.pools[product.address.toLowerCase()];
-    productPrices[product.address.toLowerCase()] = pool?.spotPrice || 0;
-  }
+  const poolsByProduct = state.pools;
 
   for (const trader of trackedTraders) {
     const traderKey = trader.toLowerCase();
+
     const baseBalanceRaw = await baseToken.balanceOf(trader);
     baseBalances[traderKey] = formatUnitsSafe(baseBalanceRaw, 18);
+
     productBalancesByTrader[traderKey] = {};
 
     for (const product of state.products) {
+      const productKey = product.address.toLowerCase();
+
       try {
         const tokenContract = getTokenContract(product.address);
         const balanceRaw = await tokenContract.balanceOf(trader);
-        productBalancesByTrader[traderKey][product.address.toLowerCase()] =
-          formatUnitsSafe(balanceRaw, product.decimals);
+
+        productBalancesByTrader[traderKey][productKey] = formatUnitsSafe(
+          balanceRaw,
+          product.decimals
+        );
       } catch (error) {
-        console.error(`balanceOf failed for trader ${trader}, product ${product.address}:`, error.message);
-        productBalancesByTrader[traderKey][product.address.toLowerCase()] = 0;
+        console.error(
+          `balanceOf failed for trader ${trader}, product ${product.address}:`,
+          error.message
+        );
+
+        productBalancesByTrader[traderKey][productKey] = 0;
       }
     }
   }
 
-  const initialBaseBalance = Number(process.env.INITIAL_BASE_BALANCE || "1000");
+  const initialBaseBalance = Number(
+    process.env.INITIAL_BASE_BALANCE || "1000"
+  );
+
   const ranking = calculateRanking({
     traders: trackedTraders,
     baseBalances,
     productBalancesByTrader,
-    productPrices,
+    poolsByProduct,
     initialBaseBalance,
   }).map((item) => ({
     ...item,
@@ -266,13 +322,15 @@ async function updateRanking() {
   }));
 
   setRanking(ranking);
+
   return ranking;
 }
 
 export async function refreshAll() {
-  // Skip if a refresh is already running (overlap protection)
   if (refreshLock) return;
+
   refreshLock = true;
+
   try {
     await refreshCompetitionStatus();
     await refreshProductsAndPools();
