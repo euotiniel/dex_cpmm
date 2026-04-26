@@ -3,75 +3,158 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DEX CPMM Battle</title>
+    <title>DEX CPMM — Bot Battle</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div class="app">
-      <header class="hero">
-        <div>
-          <p class="eyebrow">DEX CPMM · BOT BATTLE</p>
-          <h1>Market Dashboard</h1>
-          <p class="subtitle">
-            Estado da exchange, movimento do mercado e ranking dos bots em tempo real.
-          </p>
+    <!-- ── HEADER ──────────────────────────────────────────────────────────── -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="logo">⬡ DEX CPMM</span>
+        <span class="logo-sub">Bot Battle</span>
+      </div>
+      <div class="topbar-center">
+        <div class="status-pill" id="status-pill">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Connecting...</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="timer-block">
+          <span class="timer-label">Time Left</span>
+          <span class="timer-value" id="timer-value">--:--</span>
+        </div>
+        <div class="conn-indicator" id="conn-indicator" title="SSE Connection">
+          <span class="conn-dot"></span>LIVE
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard">
+
+      <!-- ── ROW 1: Stat cards ────────────────────────────────────────────── -->
+      <section class="stat-row">
+        <div class="stat-card">
+          <div class="stat-label">Total Trades</div>
+          <div class="stat-value" id="stat-trades">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Active Bots</div>
+          <div class="stat-value" id="stat-bots">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Markets</div>
+          <div class="stat-value" id="stat-markets">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Volume (CASH)</div>
+          <div class="stat-value" id="stat-volume">0</div>
+        </div>
+      </section>
+
+      <!-- ── ROW 2: Gainers / Losers / Market Table ──────────────────────── -->
+      <section class="market-row">
+        <!-- Gainers -->
+        <div class="panel panel-sm">
+          <div class="panel-header">
+            <span class="panel-title">Top Gainers</span>
+            <span class="badge badge-green">↑</span>
+          </div>
+          <div id="gainers-list" class="movers-list">
+            <div class="mover-placeholder">Aguardando dados...</div>
+          </div>
         </div>
 
-        <div class="status-box">
-          <p class="status-label">Competition Status</p>
-          <h2 id="competition-status">Loading...</h2>
-          <p id="competition-time" class="muted">A carregar dados...</p>
+        <!-- Losers -->
+        <div class="panel panel-sm">
+          <div class="panel-header">
+            <span class="panel-title">Top Losers</span>
+            <span class="badge badge-red">↓</span>
+          </div>
+          <div id="losers-list" class="movers-list">
+            <div class="mover-placeholder">Aguardando dados...</div>
+          </div>
         </div>
-      </header>
 
-      <main class="grid">
-        <section class="card">
-          <div class="card-header">
-            <h3>Products & Pools</h3>
-            <p class="muted">Reservas e preço implícito atual</p>
+        <!-- Market Overview Table -->
+        <div class="panel panel-lg">
+          <div class="panel-header">
+            <span class="panel-title">Market Overview</span>
           </div>
-          <div id="products-container" class="products-list">
-            <p class="empty">A carregar produtos...</p>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="card-header">
-            <h3>Recent Trades</h3>
-            <p class="muted">Últimas operações executadas pelos bots</p>
-          </div>
-          <div id="trades-container" class="trades-list">
-            <p class="empty">A carregar trades...</p>
-          </div>
-        </section>
-
-        <section class="card card-wide">
-          <div class="card-header">
-            <h3>Ranking</h3>
-            <p class="muted">Ordenado por PnL (maior ganho → menor ganho)</p>
-          </div>
-
-          <div class="table-wrapper">
-            <table>
+          <div class="table-scroll">
+            <table class="market-table">
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Trader</th>
-                  <th>Base Balance</th>
-                  <th>Total Value</th>
-                  <th>PnL</th>
+                  <th>Token</th>
+                  <th class="num">Price (CASH)</th>
+                  <th class="num">Change</th>
+                  <th class="num">Reserve Base</th>
+                  <th class="num">Reserve Token</th>
+                  <th class="num">Volume</th>
                 </tr>
               </thead>
-              <tbody id="ranking-body">
-                <tr>
-                  <td colspan="5" class="empty">A carregar ranking...</td>
-                </tr>
+              <tbody id="market-tbody">
+                <tr><td colspan="6" class="empty-row">A carregar...</td></tr>
               </tbody>
             </table>
           </div>
-        </section>
-      </main>
-    </div>
+        </div>
+      </section>
+
+      <!-- ── ROW 3: Price Charts ─────────────────────────────────────────── -->
+      <section class="charts-section">
+        <div class="section-header">
+          <span class="section-title">Price Charts</span>
+          <span class="section-sub">Preço em tempo real por ativo</span>
+        </div>
+        <div class="charts-grid" id="charts-grid">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+
+      <!-- ── ROW 4: Live Feed + Leaderboard ─────────────────────────────── -->
+      <section class="bottom-row">
+        <!-- Live Trades Feed -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Live Trades</span>
+            <span class="live-badge">LIVE</span>
+          </div>
+          <div class="feed" id="trades-feed">
+            <div class="feed-empty">Aguardando trades...</div>
+          </div>
+        </div>
+
+        <!-- Leaderboard -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Leaderboard</span>
+            <span class="section-sub">PnL ranking</span>
+          </div>
+          <div class="table-scroll">
+            <table class="leader-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Bot</th>
+                  <th class="num">CASH</th>
+                  <th class="num">Portfolio</th>
+                  <th class="num">PnL</th>
+                </tr>
+              </thead>
+              <tbody id="leader-tbody">
+                <tr><td colspan="5" class="empty-row">A carregar...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
 
     <script src="./app.js"></script>
   </body>

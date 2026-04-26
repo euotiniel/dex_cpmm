@@ -1,26 +1,36 @@
 {
   "name": "dex-cpmm-project",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "DEX CPMM Bot Battle — decentralized exchange simulation with automated trading bots",
   "private": true,
   "license": "MIT",
+  "type": "module",
   "scripts": {
-  "hhnode": "hardhat node",
-  "compile": "hardhat compile",
-  "deploy:local": "hardhat run scripts/deploy.js --network localhost",
-  "setup:local": "hardhat run scripts/setup.js --network localhost",
-  "start:local": "hardhat run scripts/start.js --network localhost",
-  "bootstrap:local": "node scripts/bootstrap.js",
-  "backend": "node backend/server.js"
-},
-  "devDependencies": {
-    "@nomicfoundation/hardhat-ethers": "^3.1.0",
-    "hardhat": "^2.22.10"
+    "hhnode": "hardhat node",
+    "compile": "hardhat compile",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "setup:local": "hardhat run scripts/setup.js --network localhost",
+    "start:local": "hardhat run scripts/start.js --network localhost",
+    "start:5m": "cross-env DURATION=300  hardhat run scripts/start.js --network localhost",
+    "start:10m": "cross-env DURATION=600  hardhat run scripts/start.js --network localhost",
+    "start:30m": "cross-env DURATION=1800 hardhat run scripts/start.js --network localhost",
+    "bootstrap:local": "node scripts/bootstrap.js",
+    "backend": "node backend/server.js",
+    "test": "hardhat test"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.2",
     "cors": "^2.8.5",
+    "cross-env": "^10.1.0",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.2",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.4.1"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
+    "@nomicfoundation/hardhat-ethers": "^3.1.0",
+    "chai": "^6.2.2",
+    "hardhat": "^2.22.10"
   }
 }

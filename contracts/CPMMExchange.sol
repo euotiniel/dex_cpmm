@@ -112,7 +112,6 @@ contract CPMMExchange is Ownable {
 
         for (uint256 i = 0; i < length; i++) {
             address trader = traders[i];
-
             require(trader != address(0), "Invalid trader address");
 
             if (!isTrader[trader]) {
@@ -144,11 +143,7 @@ contract CPMMExchange is Ownable {
         require(initialProductAmount > 0, "Initial product amount must be > 0");
 
         baseToken.safeTransferFrom(msg.sender, address(this), initialBaseAmount);
-        IERC20(productToken).safeTransferFrom(
-            msg.sender,
-            address(this),
-            initialProductAmount
-        );
+        IERC20(productToken).safeTransferFrom(msg.sender, address(this), initialProductAmount);
 
         pools[productToken] = Pool({
             exists: true,
@@ -159,11 +154,7 @@ contract CPMMExchange is Ownable {
 
         productTokens.push(productToken);
 
-        emit PoolCreated(
-            productToken,
-            initialBaseAmount,
-            initialProductAmount
-        );
+        emit PoolCreated(productToken, initialBaseAmount, initialProductAmount);
     }
 
     function addLiquidity(
@@ -176,6 +167,8 @@ contract CPMMExchange is Ownable {
         require(pool.exists, "Pool does not exist");
         require(baseAmount > 0, "Base amount must be > 0");
         require(productAmount > 0, "Product amount must be > 0");
+        // Guard against corrupted pool state
+        require(pool.reserveBase > 0 && pool.reserveProduct > 0, "Pool reserves are zero");
 
         baseToken.safeTransferFrom(msg.sender, address(this), baseAmount);
         pool.productToken.safeTransferFrom(msg.sender, address(this), productAmount);
@@ -183,13 +176,7 @@ contract CPMMExchange is Ownable {
         pool.reserveBase += baseAmount;
         pool.reserveProduct += productAmount;
 
-        emit LiquidityAdded(
-            productToken,
-            baseAmount,
-            productAmount,
-            pool.reserveBase,
-            pool.reserveProduct
-        );
+        emit LiquidityAdded(productToken, baseAmount, productAmount, pool.reserveBase, pool.reserveProduct);
     }
 
     function startCompetition(uint256 durationSeconds) external onlyOwner {
@@ -203,28 +190,26 @@ contract CPMMExchange is Ownable {
         competitionStartTime = block.timestamp;
         competitionEndTime = block.timestamp + durationSeconds;
 
-        emit CompetitionStarted(
-            competitionStartTime,
-            competitionEndTime,
-            durationSeconds
-        );
+        emit CompetitionStarted(competitionStartTime, competitionEndTime, durationSeconds);
     }
 
+    // Only callable by owner after competitionEndTime has passed
     function endCompetition() external onlyOwner {
+        require(competitionStatus == CompetitionStatus.ACTIVE, "Competition is not active");
         require(
-            competitionStatus == CompetitionStatus.ACTIVE,
-            "Competition is not active"
+            block.timestamp >= competitionEndTime,
+            "Competition timer has not expired yet"
         );
 
         competitionStatus = CompetitionStatus.ENDED;
-        competitionEndTime = block.timestamp;
 
         emit CompetitionEnded(block.timestamp);
     }
 
     function buy(
         address productToken,
-        uint256 baseAmountIn
+        uint256 baseAmountIn,
+        uint256 amountOutMin // slippage protection
     )
         external
         onlyRegisteredTrader
@@ -236,17 +221,11 @@ contract CPMMExchange is Ownable {
         Pool storage pool = pools[productToken];
         require(pool.exists, "Pool does not exist");
 
-        productAmountOut = getAmountOut(
-            baseAmountIn,
-            pool.reserveBase,
-            pool.reserveProduct
-        );
+        productAmountOut = getAmountOut(baseAmountIn, pool.reserveBase, pool.reserveProduct);
 
         require(productAmountOut > 0, "Output amount is zero");
-        require(
-            productAmountOut < pool.reserveProduct,
-            "Insufficient product liquidity"
-        );
+        require(productAmountOut < pool.reserveProduct, "Insufficient product liquidity");
+        require(productAmountOut >= amountOutMin, "Slippage: insufficient output amount");
 
         baseToken.safeTransferFrom(msg.sender, address(this), baseAmountIn);
         pool.productToken.safeTransfer(msg.sender, productAmountOut);
@@ -254,19 +233,13 @@ contract CPMMExchange is Ownable {
         pool.reserveBase += baseAmountIn;
         pool.reserveProduct -= productAmountOut;
 
-        emit Bought(
-            msg.sender,
-            productToken,
-            baseAmountIn,
-            productAmountOut,
-            pool.reserveBase,
-            pool.reserveProduct
-        );
+        emit Bought(msg.sender, productToken, baseAmountIn, productAmountOut, pool.reserveBase, pool.reserveProduct);
     }
 
     function sell(
         address productToken,
-        uint256 productAmountIn
+        uint256 productAmountIn,
+        uint256 amountOutMin // slippage protection
     )
         external
         onlyRegisteredTrader
@@ -278,67 +251,36 @@ contract CPMMExchange is Ownable {
         Pool storage pool = pools[productToken];
         require(pool.exists, "Pool does not exist");
 
-        baseAmountOut = getAmountOut(
-            productAmountIn,
-            pool.reserveProduct,
-            pool.reserveBase
-        );
+        baseAmountOut = getAmountOut(productAmountIn, pool.reserveProduct, pool.reserveBase);
 
         require(baseAmountOut > 0, "Output amount is zero");
-        require(
-            baseAmountOut < pool.reserveBase,
-            "Insufficient base liquidity"
-        );
+        require(baseAmountOut < pool.reserveBase, "Insufficient base liquidity");
+        require(baseAmountOut >= amountOutMin, "Slippage: insufficient output amount");
 
-        pool.productToken.safeTransferFrom(
-            msg.sender,
-            address(this),
-            productAmountIn
-        );
+        pool.productToken.safeTransferFrom(msg.sender, address(this), productAmountIn);
         baseToken.safeTransfer(msg.sender, baseAmountOut);
 
         pool.reserveProduct += productAmountIn;
         pool.reserveBase -= baseAmountOut;
 
-        emit Sold(
-            msg.sender,
-            productToken,
-            productAmountIn,
-            baseAmountOut,
-            pool.reserveBase,
-            pool.reserveProduct
-        );
+        emit Sold(msg.sender, productToken, productAmountIn, baseAmountOut, pool.reserveBase, pool.reserveProduct);
     }
 
     function isCompetitionActive() public view returns (bool) {
-        if (competitionStatus != CompetitionStatus.ACTIVE) {
-            return false;
-        }
-
-        if (competitionEndTime == 0) {
-            return false;
-        }
-
+        if (competitionStatus != CompetitionStatus.ACTIVE) return false;
+        if (competitionEndTime == 0) return false;
         return block.timestamp < competitionEndTime;
     }
 
-    function getCurrentCompetitionStatus()
-        public
-        view
-        returns (CompetitionStatus)
-    {
+    function getCurrentCompetitionStatus() public view returns (CompetitionStatus) {
         if (competitionStatus == CompetitionStatus.ACTIVE && block.timestamp >= competitionEndTime) {
             return CompetitionStatus.ENDED;
         }
-
         return competitionStatus;
     }
 
     function getRemainingTime() external view returns (uint256) {
-        if (!isCompetitionActive()) {
-            return 0;
-        }
-
+        if (!isCompetitionActive()) return 0;
         return competitionEndTime - block.timestamp;
     }
 
@@ -358,11 +300,7 @@ contract CPMMExchange is Ownable {
         amountOut = numerator / denominator;
     }
 
-    function getSpotPrice(address productToken)
-        external
-        view
-        returns (uint256 priceInBase)
-    {
+    function getSpotPrice(address productToken) external view returns (uint256 priceInBase) {
         Pool storage pool = pools[productToken];
         require(pool.exists, "Pool does not exist");
         require(pool.reserveProduct > 0, "Invalid product reserve");
@@ -373,21 +311,10 @@ contract CPMMExchange is Ownable {
     function getPool(address productToken)
         external
         view
-        returns (
-            bool exists,
-            address token,
-            uint256 reserveBase,
-            uint256 reserveProduct
-        )
+        returns (bool exists, address token, uint256 reserveBase, uint256 reserveProduct)
     {
         Pool storage pool = pools[productToken];
-
-        return (
-            pool.exists,
-            address(pool.productToken),
-            pool.reserveBase,
-            pool.reserveProduct
-        );
+        return (pool.exists, address(pool.productToken), pool.reserveBase, pool.reserveProduct);
     }
 
     function getProductTokens() external view returns (address[] memory) {
@@ -405,16 +332,8 @@ contract CPMMExchange is Ownable {
     function getCompetitionStatus()
         external
         view
-        returns (
-            CompetitionStatus status,
-            uint256 startTime,
-            uint256 endTime
-        )
+        returns (CompetitionStatus status, uint256 startTime, uint256 endTime)
     {
-        return (
-            getCurrentCompetitionStatus(),
-            competitionStartTime,
-            competitionEndTime
-        );
+        return (getCurrentCompetitionStatus(), competitionStartTime, competitionEndTime);
     }
 }

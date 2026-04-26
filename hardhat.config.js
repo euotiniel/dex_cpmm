@@ -1,11 +1,17 @@
-require("@nomicfoundation/hardhat-ethers");
-require("dotenv").config();
+import "@nomicfoundation/hardhat-ethers";
+import "@nomicfoundation/hardhat-chai-matchers";
+import "dotenv/config";
 
-module.exports = {
-  solidity: "0.8.24",
+export default {
+  solidity: {
+    version: "0.8.24",
+    settings: {
+      optimizer: { enabled: true, runs: 200 },
+    },
+  },
   networks: {
     localhost: {
-      url: "http://127.0.0.1:8545"
-    }
-  }
+      url: "http://127.0.0.1:8545",
+    },
+  },
 };
