@@ -32,6 +32,7 @@ const state = {
   trades:       [],
   ranking:      [],
   fairness:     null,
+  externalBots: [],
   lastUpdatedAt: null,
   // ── Orchestrator state — piggybacked onto the main SSE broadcast ──────────
   orchestrator: {
@@ -186,6 +187,12 @@ export function setRanking(ranking) {
 
 export function setFairness(data) {
   state.fairness      = data;
+  state.lastUpdatedAt = Date.now();
+  emitter.emit("changed");
+}
+
+export function setExternalBots(bots) {
+  state.externalBots  = bots;
   state.lastUpdatedAt = Date.now();
   emitter.emit("changed");
 }

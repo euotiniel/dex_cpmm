@@ -494,6 +494,27 @@ h1 {
   margin-left: 2px;
 }
 
+/* Bot type badge: INT (internal) vs API (external) */
+.bot-type-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 4px;
+  text-transform: uppercase;
+}
+.bot-type-tag.internal {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+}
+.bot-type-tag.external {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--green);
+}
+/* External bot pill uses green tint */
+.bot-pill.ext { border-color: rgba(34, 197, 94, 0.25); }
+
 /* ── SYSTEM PAGE ─────────────────────────────────────────────────────────────── */
 
 .sys-nav {

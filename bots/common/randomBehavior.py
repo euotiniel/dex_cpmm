@@ -35,26 +35,20 @@ def randomize_threshold(value):
 
 def buy_amount(cash, cfg):
     intensity = choose_intensity()
-    level = cfg[intensity]
-
-    max_allowed = min(level["max_buy"], cash * level["buy_fraction"])
-
-    if max_allowed <= level["min_buy"]:
+    max_allowed = min(cfg["max_buy_cash"], cash * cfg["buy_fraction"])
+    min_buy = cfg.get("min_buy_amount", 0.5)
+    if max_allowed <= min_buy:
         return None, intensity
-
-    return round(random.uniform(level["min_buy"], max_allowed), 4), intensity
+    return round(random.uniform(min_buy, max_allowed), 4), intensity
 
 
 def sell_amount(balance, cfg):
     intensity = choose_intensity()
-    level = cfg[intensity]
-
-    max_allowed = balance * level["sell_fraction"]
-
-    if max_allowed <= level["min_sell"]:
+    max_allowed = balance * cfg["sell_fraction"]
+    min_sell = cfg.get("min_sell_balance", 0.001)
+    if max_allowed <= min_sell:
         return None, intensity
-
-    return round(random.uniform(level["min_sell"], max_allowed), 4), intensity
+    return round(random.uniform(min_sell, max_allowed), 4), intensity
 
 
 def almost_sell_all(balance):

@@ -34,6 +34,8 @@ const TOKEN_ABI = [
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
   "function balanceOf(address owner) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
 ];
 
 // ── Module-level state ────────────────────────────────────────────────────────
@@ -398,4 +400,126 @@ export async function endCompetitionOnChain() {
   const ex     = exchange.connect(signer);
   const tx     = await ex.endCompetition();
   await tx.wait();
+}
+
+// ── External bot utilities ────────────────────────────────────────────────────
+
+/** Derive a checksum address from a private key without needing a provider. */
+export function deriveAddress(pk) {
+  return new ethers.Wallet(pk).address;
+}
+
+/**
+ * Add an external bot's address to the tracked-traders list so the ranking
+ * and balance refresh includes it. Safe to call multiple times (idempotent).
+ */
+export function addTrackedTrader(address, name) {
+  const norm = address.toLowerCase();
+  if (trackedTraders.some((a) => a.toLowerCase() === norm)) return;
+  trackedTraders.push(address);
+  traderMetaMap[norm] = { name };
+  const state = getState();
+  const already = state.traders.find((t) => t.address.toLowerCase() === norm);
+  if (!already) setTraders([...state.traders, { address, name }]);
+}
+
+/**
+ * Ensure the token contract held by `signer` has enough allowance for `spender`.
+ * Doubles the required amount on approval to reduce future round-trips.
+ */
+async function _ensureAllowance(tokenContract, signer, spender, amountWei) {
+  const signed    = tokenContract.connect(signer);
+  const allowance = await signed.allowance(signer.address, spender);
+  if (allowance >= amountWei) return;
+  const appTx = await signed.approve(spender, amountWei * 2n);
+  await appTx.wait();
+}
+
+/**
+ * Execute a BUY on behalf of an external bot using its private key.
+ * The server holds the PK and signs the transaction server-side.
+ */
+export async function executeBuyFor(pk, productAddress, amountInBase) {
+  if (!provider || !exchange) throw new Error("Blockchain not initialised — start the node first");
+
+  const signer    = new ethers.Wallet(pk, provider);
+  const exSigned  = exchange.connect(signer);
+  const amountWei = ethers.parseEther(String(amountInBase));
+
+  const cashContract = new ethers.Contract(baseToken.target, TOKEN_ABI, provider);
+  await _ensureAllowance(cashContract, signer, exchange.target, amountWei);
+
+  const pool = await exchange.getPool(productAddress);
+  if (!pool.exists) throw new Error(`Pool does not exist for ${productAddress}`);
+
+  const expected   = await exchange.getAmountOut(amountWei, pool.reserveBase, pool.reserveProduct);
+  const outMin     = expected * 95n / 100n; // 5 % slippage tolerance
+
+  const tx      = await exSigned.buy(productAddress, amountWei, outMin);
+  const receipt = await tx.wait();
+
+  console.log(
+    `[ExtBot] BUY | from=${signer.address} | cash=${amountInBase} | ` +
+    `product=${productAddress} | tx=${receipt.hash}`
+  );
+  return { txHash: receipt.hash };
+}
+
+/**
+ * Execute a SELL on behalf of an external bot using its private key.
+ */
+export async function executeSellFor(pk, productAddress, amountInProduct) {
+  if (!provider || !exchange) throw new Error("Blockchain not initialised — start the node first");
+
+  const signer   = new ethers.Wallet(pk, provider);
+  const exSigned = exchange.connect(signer);
+
+  const state    = getState();
+  const product  = state.products.find(
+    (p) => p.address.toLowerCase() === productAddress.toLowerCase()
+  );
+  const decimals = product?.decimals ?? 18;
+  const amountWei = ethers.parseUnits(String(amountInProduct), decimals);
+
+  const productContract = new ethers.Contract(productAddress, TOKEN_ABI, provider);
+  await _ensureAllowance(productContract, signer, exchange.target, amountWei);
+
+  const pool = await exchange.getPool(productAddress);
+  if (!pool.exists) throw new Error(`Pool does not exist for ${productAddress}`);
+
+  const expected = await exchange.getAmountOut(amountWei, pool.reserveProduct, pool.reserveBase);
+  const outMin   = expected * 95n / 100n;
+
+  const tx      = await exSigned.sell(productAddress, amountWei, outMin);
+  const receipt = await tx.wait();
+
+  console.log(
+    `[ExtBot] SELL | from=${signer.address} | product=${amountInProduct} | ` +
+    `product=${productAddress} | tx=${receipt.hash}`
+  );
+  return { txHash: receipt.hash };
+}
+
+/**
+ * Return cash + all product token balances for an external bot's address.
+ */
+export async function getBalanceFor(address) {
+  if (!provider || !baseToken) throw new Error("Blockchain not initialised");
+
+  const cashRaw = await baseToken.balanceOf(address);
+  const cash    = formatUnitsSafe(cashRaw, 18);
+
+  const state    = getState();
+  const products = {};
+
+  for (const product of state.products) {
+    const tc  = getTokenContract(product.address);
+    const raw = await tc.balanceOf(address);
+    products[product.address] = {
+      symbol:  product.symbol,
+      balance: formatUnitsSafe(raw, product.decimals),
+    };
+  }
+
+  return { cash, products };
 }

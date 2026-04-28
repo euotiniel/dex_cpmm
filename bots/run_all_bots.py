@@ -11,6 +11,7 @@ BOT_MODULES = [
     "bots.momentumBot",
     "bots.meanReversionBot",
     "bots.marketMakerBot",
+    "bots.arbitrageBot",
 ]
 
 processes = []

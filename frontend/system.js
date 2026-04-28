@@ -27,34 +27,51 @@ function setConnStatus(text, ok) {
 
 // ── Bot status renderer ───────────────────────────────────────────────────────
 
-function renderBots(bots) {
+function renderBots(internalBots, externalBots) {
   const container = document.getElementById("sys-bots");
   const aliveEl   = document.getElementById("sys-bots-alive");
   if (!container) return;
 
-  if (!bots || bots.length === 0) {
+  const internal = internalBots || [];
+  const external = externalBots || [];
+
+  if (internal.length === 0 && external.length === 0) {
     container.innerHTML = `<p class="empty">No bots launched yet</p>`;
     if (aliveEl) aliveEl.textContent = "0 / 0";
     return;
   }
 
-  const aliveCount = bots.filter((b) => b.alive).length;
-  if (aliveEl) aliveEl.textContent = `${aliveCount} / ${bots.length} alive`;
+  const aliveCount = internal.filter((b) => b.alive).length + external.length;
+  const total      = internal.length + external.length;
+  if (aliveEl) aliveEl.textContent = `${aliveCount} / ${total} alive`;
 
-  container.innerHTML = bots
-    .map((b) => {
-      const cls   = b.alive ? "alive" : "dead";
-      const label = b.alive ? "LIVE" : `EXIT ${b.exitCode ?? "?"}`;
-      const name  = b.name || b.module || "Bot";
-      return `
-        <div class="bot-pill ${cls}">
-          <span class="bot-dot"></span>
-          <span class="bot-pname">${name}</span>
-          ${b.pid ? `<span class="bot-pid">PID ${b.pid}</span>` : ""}
-          <span class="bot-status-tag">${label}</span>
-        </div>`;
-    })
-    .join("");
+  const internalHtml = internal.map((b) => {
+    const cls   = b.alive ? "alive" : "dead";
+    const label = b.alive ? "LIVE" : `EXIT ${b.exitCode ?? "?"}`;
+    const name  = b.name || b.module || "Bot";
+    return `
+      <div class="bot-pill ${cls}">
+        <span class="bot-dot"></span>
+        <span class="bot-pname">${name}</span>
+        ${b.pid ? `<span class="bot-pid">PID ${b.pid}</span>` : ""}
+        <span class="bot-type-tag internal">INT</span>
+        <span class="bot-status-tag">${label}</span>
+      </div>`;
+  });
+
+  const externalHtml = external.map((b) => {
+    const name = b.name || b.id || "External Bot";
+    return `
+      <div class="bot-pill alive ext">
+        <span class="bot-dot"></span>
+        <span class="bot-pname">${name}</span>
+        <span class="bot-pid">${b.address ? b.address.slice(0, 8) + "…" : ""}</span>
+        <span class="bot-type-tag external">API</span>
+        <span class="bot-status-tag">LIVE</span>
+      </div>`;
+  });
+
+  container.innerHTML = internalHtml.concat(externalHtml).join("");
 }
 
 // ── Fairness renderer ─────────────────────────────────────────────────────────
@@ -140,7 +157,7 @@ function renderAll(state) {
     badge.className   = "orch-badge " + orchBadgeClass(orch.state || "IDLE");
   }
 
-  renderBots(orch.bots || []);
+  renderBots(orch.bots || [], state.externalBots || []);
   renderFairness(state.fairness || null);
   renderLogs(orch.recentLogs || []);
 }

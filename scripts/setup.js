@@ -55,6 +55,35 @@ async function main() {
     await cash.mint(traderAddress, parse("1000", 18));
   }
 
+  // ── Register and fund external bot slots ──────────────────────────────────
+  // EXT_BOT_0_PK ... EXT_BOT_N_PK in .env map to Hardhat accounts 9+.
+  // Their addresses are derived and registered so they can trade in competitions.
+  const extAddresses = [];
+  for (let i = 0; i < 20; i++) {
+    const pk = process.env[`EXT_BOT_${i}_PK`];
+    if (!pk) break;
+    const addr = new hre.ethers.Wallet(pk).address;
+    extAddresses.push(addr);
+  }
+
+  if (extAddresses.length > 0) {
+    const unregistered = [];
+    for (const addr of extAddresses) {
+      const already = await exchange.isTrader(addr);
+      if (!already) unregistered.push(addr);
+    }
+
+    if (unregistered.length > 0) {
+      await exchange.registerTraders(unregistered);
+    }
+
+    for (const addr of extAddresses) {
+      await cash.mint(addr, parse("1000", 18));
+    }
+
+    console.log(`External bot slots: ${extAddresses.length} registered/funded`);
+  }
+
   console.log("Setup done");
 }
 
