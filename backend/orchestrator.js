@@ -27,6 +27,7 @@ export const ORCH_STATE = Object.freeze({
   STARTING_BOTS: "STARTING_BOTS",
   RUNNING:       "RUNNING",
   STOPPING:      "STOPPING",
+  STOPPED:       "STOPPED",
   ERROR:         "ERROR",
 });
 
@@ -350,15 +351,15 @@ class Orchestrator extends EventEmitter {
     }, 2000);
   }
 
-  // ── Stop everything (graceful) ────────────────────────────────────────────
+  // ── Stop everything (graceful) → STOPPED ─────────────────────────────────
 
   async stop() {
-    if (this.state === ORCH_STATE.IDLE) return;
+    if (this.state === ORCH_STATE.IDLE || this.state === ORCH_STATE.STOPPED) return;
     this.setState(ORCH_STATE.STOPPING);
     this.stopBots();
-    await new Promise((r) => setTimeout(r, 500));
-    this.setState(ORCH_STATE.IDLE);
-    this.log("System stopped");
+    await new Promise((r) => setTimeout(r, 1500));
+    this.setState(ORCH_STATE.STOPPED);
+    this.log("Application stopped — click Start Application to resume");
   }
 
   // ── Full reset — kill node + bots, clear state ────────────────────────────

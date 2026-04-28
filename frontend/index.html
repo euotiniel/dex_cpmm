@@ -33,70 +33,43 @@
       </header>
 
       <!-- ── Control Panel ──────────────────────────────────────────────── -->
-      <section class="panel ctrl-panel" id="ctrl-panel">
+      <section class="panel ctrl-panel">
         <div class="ctrl-top">
           <div>
             <h2>Control Panel</h2>
             <p>Orchestrate the full simulation — no terminal needed</p>
           </div>
-          <div class="orch-badge" id="orch-badge">IDLE</div>
-        </div>
-
-        <div class="ctrl-grid">
-          <!-- Actions -->
-          <div class="ctrl-actions">
-            <div class="ctrl-duration-row">
-              <label for="competition-duration">Duration (seconds)</label>
-              <input
-                type="number"
-                id="competition-duration"
-                value="300"
-                min="30"
-                max="7200"
-              />
-            </div>
-            <div class="ctrl-btn-group">
-              <button id="btn-full-start" class="cbtn cbtn-primary">
-                ▶ Start Competition
-              </button>
-              <button id="btn-stop-comp" class="cbtn cbtn-danger">
-                ⏹ End Competition
-              </button>
-              <button id="btn-restart-bots" class="cbtn cbtn-secondary">
-                🤖 Restart Bots
-              </button>
-              <button id="btn-reset" class="cbtn cbtn-ghost">
-                🔄 Reset System
-              </button>
-            </div>
-          </div>
-
-          <!-- Bot status -->
-          <div class="ctrl-col">
-            <p class="ctrl-col-label">Bot Status</p>
-            <div id="ctrl-bots-list" class="ctrl-bots-list">
-              <p class="empty">No bots launched</p>
-            </div>
-          </div>
-
-          <!-- Fairness -->
-          <div class="ctrl-col">
-            <p class="ctrl-col-label">Fairness Monitor</p>
-            <div id="ctrl-fairness" class="ctrl-fairness-box">
-              <p class="empty">Awaiting market data…</p>
-            </div>
+          <div class="ctrl-top-right">
+            <div class="orch-badge" id="orch-badge">IDLE</div>
+            <a href="/system" class="sys-monitor-link">System Monitor →</a>
           </div>
         </div>
 
-        <!-- Log viewer -->
-        <div class="ctrl-logs">
-          <div class="ctrl-logs-hdr">
-            <span>System Logs</span>
-            <button class="ctrl-logs-scroll-btn" id="ctrl-log-scroll-btn">
-              ↓ Latest
+        <div class="ctrl-simple">
+          <div class="ctrl-duration-row">
+            <label for="competition-duration">Duration (s)</label>
+            <input
+              type="number"
+              id="competition-duration"
+              value="300"
+              min="30"
+              max="7200"
+            />
+          </div>
+          <div class="ctrl-btn-grid">
+            <button id="btn-start-app" class="cbtn cbtn-primary">
+              ▶ Start Application
+            </button>
+            <button id="btn-stop-app" class="cbtn cbtn-danger">
+              ⏹ Stop Application
+            </button>
+            <button id="btn-restart-bots" class="cbtn cbtn-secondary">
+              🔄 Restart Bots
+            </button>
+            <button id="btn-restart-app" class="cbtn cbtn-ghost">
+              🔁 Restart Application
             </button>
           </div>
-          <div id="ctrl-log-list" class="ctrl-log-list"></div>
         </div>
       </section>
 

@@ -35,18 +35,28 @@ class BaseBot(ABC):
 
     def run(self):
         self.log(f"wallet={self.client.address}")
-        self.client.wait_until_active()
-        self.log("competicao ativa — iniciando estrategia")
 
         while True:
-            status = self.client.get_competition_status()
-            if status["status"] == 2:
-                self.log("competicao encerrada")
-                break
+            # Wait for the next competition (handles NOT_STARTED and ENDED)
+            self.client.wait_until_active()
+            self.log("competition active — starting strategy")
 
-            try:
-                self.step()
-            except Exception as error:
-                self.log(f"erro no step: {error}")
+            # Trade loop: runs until this competition ends
+            while True:
+                try:
+                    status = self.client.get_competition_status()
+                except Exception as e:
+                    self.log(f"status check error: {e}")
+                    time.sleep(2)
+                    continue
 
-            self.sleep_random()
+                if status["status"] != 1:
+                    self.log("competition ended — waiting for next")
+                    break
+
+                try:
+                    self.step()
+                except Exception as error:
+                    self.log(f"step error: {error}")
+
+                self.sleep_random()

@@ -107,6 +107,10 @@ function safeJson(res, getter) {
   }
 }
 
+app.get("/system", (req, res) => {
+  res.sendFile(path.join(ROOT, "frontend", "system.html"));
+});
+
 app.get("/status",   (req, res) => safeJson(res, () => getState().status));
 app.get("/products", (req, res) => safeJson(res, () => getState().products));
 app.get("/pools",    (req, res) => safeJson(res, () => getState().pools));
@@ -153,9 +157,10 @@ app.get("/orchestrate/status", (req, res) => {
 
 // Full pipeline: node → deploy → setup → reinit → bots → competition start
 app.post("/orchestrate/full-start", (req, res) => {
-  if (orchestrator.state !== ORCH_STATE.IDLE) {
+  const validStates = [ORCH_STATE.IDLE, ORCH_STATE.STOPPED];
+  if (!validStates.includes(orchestrator.state)) {
     return res.status(409).json({
-      error: `System not idle (state: ${orchestrator.state})`,
+      error: `System must be IDLE or STOPPED (current: ${orchestrator.state})`,
     });
   }
   const duration = Math.max(30, Math.min(7200,
@@ -192,22 +197,49 @@ app.post("/orchestrate/full-start", (req, res) => {
   })();
 });
 
-// End competition on-chain only (bots keep running)
-app.post("/orchestrate/stop-competition", async (req, res) => {
-  try {
-    await endCompetitionOnChain();
-    res.json({ ok: true, message: "Competition ended" });
-    syncOrchestratorState();
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+// Stop application: end competition + stop bots → STOPPED
+app.post("/orchestrate/stop-app", (req, res) => {
+  const validStates = [ORCH_STATE.RUNNING, ORCH_STATE.ERROR];
+  if (!validStates.includes(orchestrator.state)) {
+    return res.status(409).json({ error: `Cannot stop from state: ${orchestrator.state}` });
   }
+  res.json({ ok: true, message: "Stopping application…" });
+
+  (async () => {
+    try {
+      orchestrator.setState(ORCH_STATE.STOPPING);
+
+      const compStatus = getState().status.competitionStatus;
+      if (compStatus === "ACTIVE") {
+        try {
+          await endCompetitionOnChain();
+          orchestrator.log("Competition ended on-chain");
+        } catch (e) {
+          orchestrator.log(`End competition: ${e.message}`, "WARN");
+        }
+      }
+
+      orchestrator.stopBots();
+      await new Promise((r) => setTimeout(r, 1500));
+      orchestrator.setState(ORCH_STATE.STOPPED);
+      orchestrator.log("Application stopped — click Start Application to resume");
+      syncOrchestratorState();
+    } catch (err) {
+      orchestrator.log(`Stop error: ${err.message}`, "ERROR");
+      orchestrator.setState(ORCH_STATE.ERROR);
+      syncOrchestratorState();
+    }
+  })();
 });
 
-// Restart bots (kill existing, wait 2.5 s, relaunch)
+// Restart bots only — starts new competition if current one is not ACTIVE
 app.post("/orchestrate/restart-bots", (req, res) => {
-  if (orchestrator.state === ORCH_STATE.IDLE) {
-    return res.status(400).json({ error: "System is idle — start it first" });
+  const validStates = [ORCH_STATE.RUNNING, ORCH_STATE.ERROR, ORCH_STATE.STOPPED];
+  if (!validStates.includes(orchestrator.state)) {
+    return res.status(400).json({ error: `Cannot restart bots from state: ${orchestrator.state}` });
   }
+  const duration = Math.max(30, Math.min(7200,
+    Number((req.body || {}).duration || 300)));
   res.json({ ok: true, message: "Restarting bots…" });
 
   (async () => {
@@ -215,6 +247,18 @@ app.post("/orchestrate/restart-bots", (req, res) => {
       orchestrator.stopBots();
       await new Promise((r) => setTimeout(r, 2500));
       orchestrator.bots = [];
+
+      // Ensure competition is ACTIVE when bots start (they crash on ENDED status)
+      const compStatus = getState().status.competitionStatus;
+      if (compStatus !== "ACTIVE") {
+        try {
+          await startCompetitionOnChain(duration);
+          orchestrator.log(`New competition started (${duration}s)`);
+        } catch (e) {
+          orchestrator.log(`Competition start: ${e.message}`, "WARN");
+        }
+      }
+
       await orchestrator.startBots();
       syncOrchestratorState();
     } catch (err) {
@@ -224,7 +268,60 @@ app.post("/orchestrate/restart-bots", (req, res) => {
   })();
 });
 
-// Full reset — kills node + bots, wipes blockchain connection
+// Restart application: stop → reset market → reinit → bots → competition
+app.post("/orchestrate/restart-app", (req, res) => {
+  const validStates = [ORCH_STATE.RUNNING, ORCH_STATE.STOPPED, ORCH_STATE.ERROR];
+  if (!validStates.includes(orchestrator.state)) {
+    return res.status(409).json({ error: `Cannot restart from state: ${orchestrator.state}` });
+  }
+  const duration = Math.max(30, Math.min(7200,
+    Number((req.body || {}).duration || 300)));
+  res.json({ ok: true, message: "Restarting application…" });
+
+  (async () => {
+    try {
+      // Stop phase
+      orchestrator.setState(ORCH_STATE.STOPPING);
+      const compStatus = getState().status.competitionStatus;
+      if (compStatus === "ACTIVE") {
+        try {
+          await endCompetitionOnChain();
+          orchestrator.log("Competition ended");
+        } catch (e) {
+          orchestrator.log(`End competition: ${e.message}`, "WARN");
+        }
+      }
+      orchestrator.stopBots();
+      await new Promise((r) => setTimeout(r, 2000));
+      orchestrator.log("Stopped — resetting market state…");
+
+      // Reset market balances (re-run setup)
+      await orchestrator.setupMarket();
+      syncOrchestratorState();
+
+      // Reinit blockchain connection with current addresses
+      await reinitBlockchain();
+      orchestrator.log("Blockchain reinitialized");
+      syncOrchestratorState();
+
+      // Clear dead bot records and relaunch
+      orchestrator.bots = [];
+      await orchestrator.startBots();
+      syncOrchestratorState();
+
+      // Start new competition
+      await startCompetitionOnChain(duration);
+      orchestrator.log(`New competition started (${duration}s)`);
+      syncOrchestratorState();
+    } catch (err) {
+      orchestrator.log(`Restart error: ${err.message}`, "ERROR");
+      orchestrator.setState(ORCH_STATE.ERROR);
+      syncOrchestratorState();
+    }
+  })();
+});
+
+// Full reset — kills node + bots, wipes all state → IDLE
 app.post("/orchestrate/reset", (req, res) => {
   res.json({ ok: true, message: "Resetting system…" });
 

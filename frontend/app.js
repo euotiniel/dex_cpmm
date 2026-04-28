@@ -525,6 +525,7 @@ const TRANSITIONING = new Set([
 function orchBadgeClass(orchState) {
   if (orchState === "RUNNING") return "running";
   if (orchState === "ERROR")   return "error";
+  if (orchState === "STOPPED") return "stopped";
   if (TRANSITIONING.has(orchState)) return "working";
   return "";
 }
@@ -536,116 +537,28 @@ function renderOrchestratorBadge(orchState) {
   el.className   = "orch-badge " + orchBadgeClass(orchState);
 }
 
-function renderBots(bots) {
-  const container = document.getElementById("ctrl-bots-list");
-  if (!container) return;
+function updateButtonStates(orchState) {
+  const isBusy  = TRANSITIONING.has(orchState);
+  const canStart = (orchState === "IDLE" || orchState === "STOPPED") && !isBusy;
+  const canStop  = orchState === "RUNNING";
+  const canRestartBots = (orchState === "RUNNING" || orchState === "ERROR") && !isBusy;
+  const canRestartApp  = (orchState === "RUNNING" || orchState === "STOPPED" || orchState === "ERROR") && !isBusy;
 
-  if (!bots || bots.length === 0) {
-    container.innerHTML = `<p class="empty">No bots launched</p>`;
-    return;
-  }
+  const btnStart       = document.getElementById("btn-start-app");
+  const btnStop        = document.getElementById("btn-stop-app");
+  const btnRestartBots = document.getElementById("btn-restart-bots");
+  const btnRestartApp  = document.getElementById("btn-restart-app");
 
-  container.innerHTML = bots
-    .map((b) => {
-      const cls    = b.alive ? "alive" : "dead";
-      const label  = b.alive ? "LIVE" : `EXIT ${b.exitCode ?? "?"}`;
-      const name   = b.name || b.module || "Bot";
-      return `
-        <div class="bot-pill ${cls}">
-          <span class="bot-dot"></span>
-          <span class="bot-pname">${name}</span>
-          <span class="bot-status-tag">${label}</span>
-        </div>`;
-    })
-    .join("");
-}
-
-function renderFairness(fairness) {
-  const container = document.getElementById("ctrl-fairness");
-  if (!container) return;
-
-  if (!fairness) {
-    container.innerHTML = `<p class="empty">Awaiting market data…</p>`;
-    return;
-  }
-
-  const m = fairness.metrics || {};
-  const issues = (fairness.issues || [])
-    .map((i) => `<div class="fairness-issue">⚠ ${i}</div>`)
-    .join("");
-
-  container.innerHTML = `
-    <div class="fairness-badge ${fairness.status}">${fairness.status}</div>
-    <div class="fairness-metric">
-      <span>Gini coefficient</span>
-      <strong>${Number(m.gini || 0).toFixed(4)}</strong>
-    </div>
-    <div class="fairness-metric">
-      <span>Top bot dominance</span>
-      <strong>${Number(m.dominancePct || 0).toFixed(1)}%</strong>
-    </div>
-    <div class="fairness-metric">
-      <span>Trade frequency ratio</span>
-      <strong>${Number(m.tradeFrequencyRatio || 1).toFixed(2)}×</strong>
-    </div>
-    <div class="fairness-metric">
-      <span>Buy / Sell ratio</span>
-      <strong>${(Number(m.buyRatio || 0.5) * 100).toFixed(0)}% / ${(Number(m.sellRatio || 0.5) * 100).toFixed(0)}%</strong>
-    </div>
-    ${issues}`;
-}
-
-let _lastLogCount = 0;
-
-function renderLogs(logs) {
-  const container = document.getElementById("ctrl-log-list");
-  if (!container || !logs) return;
-
-  if (logs.length === _lastLogCount) return;
-  _lastLogCount = logs.length;
-
-  const wasAtBottom =
-    container.scrollHeight - container.clientHeight - container.scrollTop < 60;
-
-  container.innerHTML = logs
-    .map((entry) => {
-      const t   = new Date(entry.t).toLocaleTimeString("pt-PT", {
-        hour: "2-digit", minute: "2-digit", second: "2-digit",
-      });
-      const lvl = entry.level || "INFO";
-      const msg = (entry.message || "").replace(/</g, "&lt;");
-      return `<div class="log-entry ${lvl}"><span class="log-time">${t}</span><span class="log-msg">${msg}</span></div>`;
-    })
-    .join("");
-
-  if (wasAtBottom) container.scrollTop = container.scrollHeight;
-}
-
-function updateButtonStates(orchState, compStatus) {
-  const isTransitioning = TRANSITIONING.has(orchState);
-  const isIdle   = orchState === "IDLE";
-  const isActive = compStatus === "ACTIVE";
-
-  const btnStart        = document.getElementById("btn-full-start");
-  const btnStopComp     = document.getElementById("btn-stop-comp");
-  const btnRestartBots  = document.getElementById("btn-restart-bots");
-  const btnReset        = document.getElementById("btn-reset");
-
-  if (btnStart)       btnStart.disabled       = !isIdle || isActive;
-  if (btnStopComp)    btnStopComp.disabled     = compStatus !== "ACTIVE";
-  if (btnRestartBots) btnRestartBots.disabled  = isIdle || isTransitioning;
-  if (btnReset)       btnReset.disabled        = isIdle || isTransitioning;
+  if (btnStart)       btnStart.disabled       = !canStart;
+  if (btnStop)        btnStop.disabled         = !canStop;
+  if (btnRestartBots) btnRestartBots.disabled  = !canRestartBots;
+  if (btnRestartApp)  btnRestartApp.disabled   = !canRestartApp;
 }
 
 function renderControlPanel(state) {
-  const orch       = state.orchestrator || {};
-  const compStatus = (state.status || {}).competitionStatus || "NOT_STARTED";
-
+  const orch = state.orchestrator || {};
   renderOrchestratorBadge(orch.state || "IDLE");
-  renderBots(orch.bots || []);
-  renderFairness(state.fairness || null);
-  renderLogs(orch.recentLogs || []);
-  updateButtonStates(orch.state || "IDLE", compStatus);
+  updateButtonStates(orch.state || "IDLE");
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -666,6 +579,10 @@ async function apiPost(path, body = {}) {
   }
 }
 
+function getDuration() {
+  return Number(document.getElementById("competition-duration")?.value || 300);
+}
+
 function withLoading(btn, fn) {
   const orig = btn.textContent;
   btn.disabled = true;
@@ -679,37 +596,29 @@ function withLoading(btn, fn) {
 
 // ── Button wiring ─────────────────────────────────────────────────────────────
 
-document.getElementById("btn-full-start")?.addEventListener("click", (e) => {
-  withLoading(e.currentTarget, () => {
-    const duration = Number(
-      document.getElementById("competition-duration")?.value || 300
-    );
-    return apiPost("/orchestrate/full-start", { duration });
-  });
+document.getElementById("btn-start-app")?.addEventListener("click", (e) => {
+  withLoading(e.currentTarget, () =>
+    apiPost("/orchestrate/full-start", { duration: getDuration() })
+  );
 });
 
-document.getElementById("btn-stop-comp")?.addEventListener("click", (e) => {
+document.getElementById("btn-stop-app")?.addEventListener("click", (e) => {
   withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/stop-competition")
+    apiPost("/orchestrate/stop-app")
   );
 });
 
 document.getElementById("btn-restart-bots")?.addEventListener("click", (e) => {
   withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/restart-bots")
+    apiPost("/orchestrate/restart-bots", { duration: getDuration() })
   );
 });
 
-document.getElementById("btn-reset")?.addEventListener("click", (e) => {
-  if (!confirm("Reset the entire system? This will kill all bots and the Hardhat node.")) return;
+document.getElementById("btn-restart-app")?.addEventListener("click", (e) => {
+  if (!confirm("Restart the application? This will reset market balances and relaunch all bots.")) return;
   withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/reset")
+    apiPost("/orchestrate/restart-app", { duration: getDuration() })
   );
-});
-
-document.getElementById("ctrl-log-scroll-btn")?.addEventListener("click", () => {
-  const el = document.getElementById("ctrl-log-list");
-  if (el) el.scrollTop = el.scrollHeight;
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

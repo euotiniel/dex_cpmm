@@ -212,13 +212,18 @@ class DexClient:
         return {"status": int(status), "start_time": int(start_time), "end_time": int(end_time)}
 
     def wait_until_active(self, interval_seconds: int = 2):
+        """Block until competition is ACTIVE (status 1). Handles ENDED gracefully."""
         while True:
-            data = self.get_competition_status()
-            if data["status"] == 1:
-                return
-            if data["status"] == 2:
-                raise RuntimeError("A competicao ja terminou antes de comecar")
-            print(f"[{self.address}] aguardando inicio da competicao...")
+            try:
+                data = self.get_competition_status()
+                if data["status"] == 1:
+                    return
+                if data["status"] == 2:
+                    print(f"[{self.address}] competition ended — waiting for new one...", flush=True)
+                else:
+                    print(f"[{self.address}] waiting for competition to start...", flush=True)
+            except Exception as e:
+                print(f"[{self.address}] status check error: {e}", flush=True)
             time.sleep(interval_seconds)
 
     def get_cash_balance(self) -> float:

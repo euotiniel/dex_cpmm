@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>System Monitor — DEX CPMM</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+
+  <body>
+    <div class="app">
+      <!-- ── Navigation ─────────────────────────────────────────────────── -->
+      <nav class="sys-nav">
+        <a href="/" class="sys-back">← Dashboard</a>
+        <div class="sys-nav-center">
+          <span class="sys-nav-title">System Monitor</span>
+          <div class="orch-badge" id="sys-orch-badge">IDLE</div>
+        </div>
+        <div class="sys-nav-right">
+          <span class="sys-conn" id="sys-conn-status">Connecting…</span>
+        </div>
+      </nav>
+
+      <!-- ── Bot Status + Fairness ──────────────────────────────────────── -->
+      <div class="sys-top-grid">
+        <section class="panel">
+          <div class="section-header">
+            <div>
+              <h2>Bot Status</h2>
+              <p>Live process health for all 8 bots</p>
+            </div>
+            <span id="sys-bots-alive" class="tag">--</span>
+          </div>
+          <div id="sys-bots">
+            <p class="empty">No bots launched yet</p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-header">
+            <div>
+              <h2>Fairness Monitor</h2>
+              <p>Market equality metrics updated in real-time</p>
+            </div>
+            <span id="sys-fairness-badge" class="tag">--</span>
+          </div>
+          <div id="sys-fairness">
+            <p class="empty">Awaiting market data…</p>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── System Logs ────────────────────────────────────────────────── -->
+      <section class="panel sys-logs-panel">
+        <div class="section-header">
+          <div>
+            <h2>System Logs</h2>
+            <p>Real-time orchestration, bot, and error output</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer">
+              <input type="checkbox" id="sys-log-autoscroll" checked style="cursor:pointer" />
+              Auto-scroll
+            </label>
+            <button id="sys-log-scroll-btn" class="ctrl-logs-scroll-btn">↓ Latest</button>
+          </div>
+        </div>
+        <div id="sys-log-list" class="ctrl-log-list sys-log-list"></div>
+      </section>
+    </div>
+
+    <script src="./system.js"></script>
+  </body>
+</html>
