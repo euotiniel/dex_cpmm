@@ -461,6 +461,7 @@ function renderAll(state) {
   const initialPrices = state.initialPrices || {};
   const traderNameMap = buildTraderNameMap(ranking);
 
+  renderControlPanel(state);
   renderStatus(status);
   renderStats(state);
   renderProducts(products, pools, initialPrices);
@@ -514,6 +515,202 @@ function connectSSE() {
     reconnectTimer = setTimeout(connectSSE, 3000);
   };
 }
+
+// ── Control Panel ─────────────────────────────────────────────────────────────
+
+const TRANSITIONING = new Set([
+  "STARTING_NODE", "DEPLOYING", "SETTING_UP", "STARTING_BOTS", "STOPPING",
+]);
+
+function orchBadgeClass(orchState) {
+  if (orchState === "RUNNING") return "running";
+  if (orchState === "ERROR")   return "error";
+  if (TRANSITIONING.has(orchState)) return "working";
+  return "";
+}
+
+function renderOrchestratorBadge(orchState) {
+  const el = document.getElementById("orch-badge");
+  if (!el) return;
+  el.textContent = orchState || "IDLE";
+  el.className   = "orch-badge " + orchBadgeClass(orchState);
+}
+
+function renderBots(bots) {
+  const container = document.getElementById("ctrl-bots-list");
+  if (!container) return;
+
+  if (!bots || bots.length === 0) {
+    container.innerHTML = `<p class="empty">No bots launched</p>`;
+    return;
+  }
+
+  container.innerHTML = bots
+    .map((b) => {
+      const cls    = b.alive ? "alive" : "dead";
+      const label  = b.alive ? "LIVE" : `EXIT ${b.exitCode ?? "?"}`;
+      const name   = b.name || b.module || "Bot";
+      return `
+        <div class="bot-pill ${cls}">
+          <span class="bot-dot"></span>
+          <span class="bot-pname">${name}</span>
+          <span class="bot-status-tag">${label}</span>
+        </div>`;
+    })
+    .join("");
+}
+
+function renderFairness(fairness) {
+  const container = document.getElementById("ctrl-fairness");
+  if (!container) return;
+
+  if (!fairness) {
+    container.innerHTML = `<p class="empty">Awaiting market data…</p>`;
+    return;
+  }
+
+  const m = fairness.metrics || {};
+  const issues = (fairness.issues || [])
+    .map((i) => `<div class="fairness-issue">⚠ ${i}</div>`)
+    .join("");
+
+  container.innerHTML = `
+    <div class="fairness-badge ${fairness.status}">${fairness.status}</div>
+    <div class="fairness-metric">
+      <span>Gini coefficient</span>
+      <strong>${Number(m.gini || 0).toFixed(4)}</strong>
+    </div>
+    <div class="fairness-metric">
+      <span>Top bot dominance</span>
+      <strong>${Number(m.dominancePct || 0).toFixed(1)}%</strong>
+    </div>
+    <div class="fairness-metric">
+      <span>Trade frequency ratio</span>
+      <strong>${Number(m.tradeFrequencyRatio || 1).toFixed(2)}×</strong>
+    </div>
+    <div class="fairness-metric">
+      <span>Buy / Sell ratio</span>
+      <strong>${(Number(m.buyRatio || 0.5) * 100).toFixed(0)}% / ${(Number(m.sellRatio || 0.5) * 100).toFixed(0)}%</strong>
+    </div>
+    ${issues}`;
+}
+
+let _lastLogCount = 0;
+
+function renderLogs(logs) {
+  const container = document.getElementById("ctrl-log-list");
+  if (!container || !logs) return;
+
+  if (logs.length === _lastLogCount) return;
+  _lastLogCount = logs.length;
+
+  const wasAtBottom =
+    container.scrollHeight - container.clientHeight - container.scrollTop < 60;
+
+  container.innerHTML = logs
+    .map((entry) => {
+      const t   = new Date(entry.t).toLocaleTimeString("pt-PT", {
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+      });
+      const lvl = entry.level || "INFO";
+      const msg = (entry.message || "").replace(/</g, "&lt;");
+      return `<div class="log-entry ${lvl}"><span class="log-time">${t}</span><span class="log-msg">${msg}</span></div>`;
+    })
+    .join("");
+
+  if (wasAtBottom) container.scrollTop = container.scrollHeight;
+}
+
+function updateButtonStates(orchState, compStatus) {
+  const isTransitioning = TRANSITIONING.has(orchState);
+  const isIdle   = orchState === "IDLE";
+  const isActive = compStatus === "ACTIVE";
+
+  const btnStart        = document.getElementById("btn-full-start");
+  const btnStopComp     = document.getElementById("btn-stop-comp");
+  const btnRestartBots  = document.getElementById("btn-restart-bots");
+  const btnReset        = document.getElementById("btn-reset");
+
+  if (btnStart)       btnStart.disabled       = !isIdle || isActive;
+  if (btnStopComp)    btnStopComp.disabled     = compStatus !== "ACTIVE";
+  if (btnRestartBots) btnRestartBots.disabled  = isIdle || isTransitioning;
+  if (btnReset)       btnReset.disabled        = isIdle || isTransitioning;
+}
+
+function renderControlPanel(state) {
+  const orch       = state.orchestrator || {};
+  const compStatus = (state.status || {}).competitionStatus || "NOT_STARTED";
+
+  renderOrchestratorBadge(orch.state || "IDLE");
+  renderBots(orch.bots || []);
+  renderFairness(state.fairness || null);
+  renderLogs(orch.recentLogs || []);
+  updateButtonStates(orch.state || "IDLE", compStatus);
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+
+async function apiPost(path, body = {}) {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+    return json;
+  } catch (err) {
+    console.error(`[API] POST ${path} failed:`, err.message);
+    throw err;
+  }
+}
+
+function withLoading(btn, fn) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "⏳ Working…";
+  fn().catch((err) => {
+    console.error("Button action failed:", err.message);
+  }).finally(() => {
+    btn.textContent = orig;
+  });
+}
+
+// ── Button wiring ─────────────────────────────────────────────────────────────
+
+document.getElementById("btn-full-start")?.addEventListener("click", (e) => {
+  withLoading(e.currentTarget, () => {
+    const duration = Number(
+      document.getElementById("competition-duration")?.value || 300
+    );
+    return apiPost("/orchestrate/full-start", { duration });
+  });
+});
+
+document.getElementById("btn-stop-comp")?.addEventListener("click", (e) => {
+  withLoading(e.currentTarget, () =>
+    apiPost("/orchestrate/stop-competition")
+  );
+});
+
+document.getElementById("btn-restart-bots")?.addEventListener("click", (e) => {
+  withLoading(e.currentTarget, () =>
+    apiPost("/orchestrate/restart-bots")
+  );
+});
+
+document.getElementById("btn-reset")?.addEventListener("click", (e) => {
+  if (!confirm("Reset the entire system? This will kill all bots and the Hardhat node.")) return;
+  withLoading(e.currentTarget, () =>
+    apiPost("/orchestrate/reset")
+  );
+});
+
+document.getElementById("ctrl-log-scroll-btn")?.addEventListener("click", () => {
+  const el = document.getElementById("ctrl-log-list");
+  if (el) el.scrollTop = el.scrollHeight;
+});
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 initTfButtons();

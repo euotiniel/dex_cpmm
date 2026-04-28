@@ -31,6 +31,7 @@ const state = {
   traderStats:  {},
   trades:       [],
   ranking:      [],
+  fairness:     null,
   lastUpdatedAt: null,
   // ── Orchestrator state — piggybacked onto the main SSE broadcast ──────────
   orchestrator: {
@@ -179,6 +180,12 @@ export function addTrade(trade) {
 
 export function setRanking(ranking) {
   state.ranking       = ranking;
+  state.lastUpdatedAt = Date.now();
+  emitter.emit("changed");
+}
+
+export function setFairness(data) {
+  state.fairness      = data;
   state.lastUpdatedAt = Date.now();
   emitter.emit("changed");
 }
