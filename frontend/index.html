@@ -9,11 +9,14 @@
 
   <body>
     <div class="app">
+      <!-- ── Header ─────────────────────────────────────────────────────── -->
       <header class="header">
         <div>
           <p class="eyebrow">DEX CPMM · BOT BATTLE</p>
           <h1>Trading Arena</h1>
-          <p class="subtitle">Mercados CPMM, bots ativos e execução de trades em tempo real.</p>
+          <p class="subtitle">
+            Mercados CPMM, bots ativos e execução de trades em tempo real.
+          </p>
         </div>
 
         <div class="header-status">
@@ -29,6 +32,7 @@
         </div>
       </header>
 
+      <!-- ── Metrics ────────────────────────────────────────────────────── -->
       <section class="metrics">
         <div class="metric">
           <span>Total Trades</span>
@@ -51,6 +55,7 @@
         </div>
       </section>
 
+      <!-- ── Main layout: Markets / Leaderboard / Trades ───────────────── -->
       <main class="layout">
         <section class="panel markets-panel">
           <div class="section-header">
@@ -84,7 +89,6 @@
                   <th>PnL</th>
                 </tr>
               </thead>
-
               <tbody id="ranking-body">
                 <tr>
                   <td colspan="4" class="empty">A carregar ranking...</td>
@@ -107,8 +111,37 @@
           </div>
         </section>
       </main>
+
+      <!-- ── Candlestick Charts ──────────────────────────────────────────── -->
+      <section class="panel charts-section">
+        <div class="section-header">
+          <div>
+            <h2>Price Charts</h2>
+            <p>Candlestick OHLC — dados reais dos trades em tempo real</p>
+          </div>
+
+          <div class="chart-controls">
+            <div class="chart-token-tabs" id="chart-token-tabs">
+              <!-- Populated dynamically when products load -->
+            </div>
+
+            <div class="chart-tf-tabs">
+              <button class="tf-btn" data-tf="1">1s</button>
+              <button class="tf-btn active" data-tf="5">5s</button>
+              <button class="tf-btn" data-tf="15">15s</button>
+              <button class="tf-btn" data-tf="60">1m</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="chart-container">
+          <p class="chart-empty">A aguardar dados de mercado...</p>
+        </div>
+      </section>
     </div>
 
+    <!-- lightweight-charts must load before app.js -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

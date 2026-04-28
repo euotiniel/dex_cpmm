@@ -1,26 +1,43 @@
 const API_BASE = "http://localhost:3001";
 
+// ── DOM refs ──────────────────────────────────────────────────────────────────
 const competitionStatusEl = document.getElementById("competition-status");
-const competitionTimeEl = document.getElementById("competition-time");
-const timeLabelEl = document.getElementById("time-label");
+const competitionTimeEl   = document.getElementById("competition-time");
+const timeLabelEl         = document.getElementById("time-label");
+const productsContainer   = document.getElementById("products-container");
+const tradesContainer     = document.getElementById("trades-container");
+const rankingBody         = document.getElementById("ranking-body");
+const totalTradesEl       = document.getElementById("total-trades");
+const activeBotsEl        = document.getElementById("active-bots");
+const totalMarketsEl      = document.getElementById("total-markets");
+const totalVolumeEl       = document.getElementById("total-volume");
 
-const productsContainer = document.getElementById("products-container");
-const tradesContainer = document.getElementById("trades-container");
-const rankingBody = document.getElementById("ranking-body");
+// ── Chart state ───────────────────────────────────────────────────────────────
+let chart         = null;
+let candleSeries  = null;
+let volumeSeries  = null;
+let selectedProductAddress = null;
+let selectedTimeframe      = 5;   // seconds
+let tabsInitialized        = false;
+let lastState              = null;
 
-const totalTradesEl = document.getElementById("total-trades");
-const activeBotsEl = document.getElementById("active-bots");
-const totalMarketsEl = document.getElementById("total-markets");
-const totalVolumeEl = document.getElementById("total-volume");
+// ── Countdown state ───────────────────────────────────────────────────────────
+let countdownInterval = null;
+let _countdownEndTime = 0;
+
+// ── SSE state ─────────────────────────────────────────────────────────────────
+let eventSource    = null;
+let reconnectTimer = null;
+
+// ── Formatters ────────────────────────────────────────────────────────────────
 
 function formatNumber(value, digits = 4) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return "-";
   }
-
   return Number(value).toLocaleString("pt-PT", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: digits
+    maximumFractionDigits: digits,
   });
 }
 
@@ -30,15 +47,11 @@ function shortAddress(address) {
 }
 
 function formatDuration(seconds) {
-  const safeSeconds = Math.max(0, Number(seconds || 0));
-
-  const hours = Math.floor(safeSeconds / 3600);
-  const minutes = Math.floor((safeSeconds % 3600) / 60);
-  const secs = Math.floor(safeSeconds % 60);
-
-  return [hours, minutes, secs]
-    .map((unit) => String(unit).padStart(2, "0"))
-    .join(":");
+  const s = Math.max(0, Math.floor(Number(seconds || 0)));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return [h, m, sec].map((u) => String(u).padStart(2, "0")).join(":");
 }
 
 function formatTradeTime(timestamp) {
@@ -46,44 +59,222 @@ function formatTradeTime(timestamp) {
   return new Date(timestamp).toLocaleTimeString("pt-PT", {
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit"
+    second: "2-digit",
   });
 }
 
-function buildTraderNameMap(ranking) {
-  const map = {};
+// ── Countdown ─────────────────────────────────────────────────────────────────
 
-  for (const item of ranking || []) {
-    if (item.trader) {
-      map[item.trader.toLowerCase()] = item.name || item.trader;
+function startCountdown(endTimeUnix) {
+  if (endTimeUnix === _countdownEndTime) return;
+  _countdownEndTime = endTimeUnix;
+
+  clearInterval(countdownInterval);
+  countdownInterval = setInterval(() => {
+    const remaining = _countdownEndTime - Math.floor(Date.now() / 1000);
+    if (remaining <= 0) {
+      competitionTimeEl.textContent = "00:00:00";
+      clearInterval(countdownInterval);
+      return;
+    }
+    competitionTimeEl.textContent = formatDuration(remaining);
+  }, 1000);
+
+  // Render immediately without waiting 1s
+  const remaining = endTimeUnix - Math.floor(Date.now() / 1000);
+  competitionTimeEl.textContent = formatDuration(Math.max(0, remaining));
+}
+
+// ── Candle builders ───────────────────────────────────────────────────────────
+
+function buildCandles(pricePoints, timeframeSec) {
+  if (!pricePoints || pricePoints.length === 0) return [];
+
+  const tfMs = timeframeSec * 1000;
+  const bucketMap = new Map();
+
+  for (const { t, p } of pricePoints) {
+    if (!p || p <= 0) continue;
+    const bucketMs  = Math.floor(t / tfMs) * tfMs;
+    const timeUnix  = Math.floor(bucketMs / 1000); // lightweight-charts: seconds
+
+    if (!bucketMap.has(timeUnix)) {
+      bucketMap.set(timeUnix, { time: timeUnix, open: p, high: p, low: p, close: p });
+    } else {
+      const c = bucketMap.get(timeUnix);
+      if (p > c.high) c.high = p;
+      if (p < c.low)  c.low  = p;
+      c.close = p;
     }
   }
 
-  return map;
+  return Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
 }
+
+function buildVolume(trades, productAddress, timeframeSec) {
+  if (!trades || !productAddress) return [];
+
+  const tfMs       = timeframeSec * 1000;
+  const productKey = productAddress.toLowerCase();
+  const bucketMap  = new Map();
+
+  for (const trade of trades) {
+    if ((trade.productToken || "").toLowerCase() !== productKey) continue;
+
+    const t        = trade.timestamp || 0;
+    const bucketMs = Math.floor(t / tfMs) * tfMs;
+    const timeUnix = Math.floor(bucketMs / 1000);
+    const vol      = trade.type === "BUY"
+      ? Number(trade.amountIn  || 0)
+      : Number(trade.amountOut || 0);
+
+    if (!bucketMap.has(timeUnix)) {
+      bucketMap.set(timeUnix, {
+        time:  timeUnix,
+        value: vol,
+        color: trade.type === "BUY" ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)",
+      });
+    } else {
+      bucketMap.get(timeUnix).value += vol;
+    }
+  }
+
+  return Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
+}
+
+// ── Chart init & update ───────────────────────────────────────────────────────
+
+function initChart() {
+  const container = document.getElementById("chart-container");
+  if (!container || typeof LightweightCharts === "undefined") return;
+
+  chart = LightweightCharts.createChart(container, {
+    width:  container.offsetWidth,
+    height: 400,
+    layout: {
+      background: { type: "solid", color: "#0f1419" },
+      textColor:  "#9aa4b2",
+    },
+    grid: {
+      vertLines: { color: "#1e2730" },
+      horzLines: { color: "#1e2730" },
+    },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: "#27313d" },
+    timeScale: {
+      borderColor:    "#27313d",
+      timeVisible:    true,
+      secondsVisible: selectedTimeframe <= 15,
+    },
+  });
+
+  candleSeries = chart.addCandlestickSeries({
+    upColor:      "#22c55e",
+    downColor:    "#ef4444",
+    borderVisible: false,
+    wickUpColor:   "#22c55e",
+    wickDownColor: "#ef4444",
+  });
+
+  volumeSeries = chart.addHistogramSeries({
+    priceFormat:   { type: "volume" },
+    priceScaleId:  "volume",
+    scaleMargins:  { top: 0.82, bottom: 0 },
+  });
+
+  chart.priceScale("volume").applyOptions({
+    scaleMargins: { top: 0.82, bottom: 0 },
+  });
+
+  // Remove the placeholder text once the chart is mounted
+  const placeholder = container.querySelector(".chart-empty");
+  if (placeholder) placeholder.remove();
+
+  window.addEventListener("resize", () => {
+    if (chart) chart.applyOptions({ width: container.offsetWidth });
+  });
+}
+
+function updateChart(state) {
+  if (!chart || !candleSeries || !selectedProductAddress) return;
+
+  const productKey   = selectedProductAddress.toLowerCase();
+  const priceHistory = (state.priceHistory || {})[productKey] || [];
+  const trades       = state.trades || [];
+
+  const candles = buildCandles(priceHistory, selectedTimeframe);
+  const volume  = buildVolume(trades, selectedProductAddress, selectedTimeframe);
+
+  if (candles.length > 0) candleSeries.setData(candles);
+  if (volume.length  > 0) volumeSeries.setData(volume);
+
+  chart.applyOptions({
+    timeScale: { secondsVisible: selectedTimeframe <= 15 },
+  });
+}
+
+// ── Token tab management ──────────────────────────────────────────────────────
+
+function populateTokenTabs(products) {
+  const tabContainer = document.getElementById("chart-token-tabs");
+  if (!tabContainer || !products.length) return;
+
+  if (!selectedProductAddress) {
+    selectedProductAddress = products[0].address;
+  }
+
+  tabContainer.innerHTML = products
+    .map((p) => {
+      const active =
+        p.address.toLowerCase() === selectedProductAddress.toLowerCase()
+          ? "active"
+          : "";
+      return `<button class="chart-tab ${active}" data-address="${p.address}">${
+        p.symbol || p.address.slice(0, 6)
+      }</button>`;
+    })
+    .join("");
+
+  tabContainer.querySelectorAll(".chart-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      tabContainer
+        .querySelectorAll(".chart-tab")
+        .forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      selectedProductAddress = btn.dataset.address;
+      if (lastState) updateChart(lastState);
+    });
+  });
+}
+
+function initTfButtons() {
+  document.querySelectorAll(".tf-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document
+        .querySelectorAll(".tf-btn")
+        .forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      selectedTimeframe = Number(btn.dataset.tf);
+      if (lastState) updateChart(lastState);
+    });
+  });
+}
+
+// ── UI renderers ──────────────────────────────────────────────────────────────
 
 function renderStatus(status = {}) {
   const currentStatus = status.competitionStatus || "UNKNOWN";
   const livePill = document.querySelector(".live-pill");
-
   livePill.classList.remove("active", "ended", "pending", "error");
 
   const now = Math.floor(Date.now() / 1000);
-  const start = Number(status.competitionStartTime || 0);
   const end = Number(status.competitionEndTime || 0);
 
   if (currentStatus === "ACTIVE") {
     livePill.classList.add("active");
     competitionStatusEl.textContent = "LIVE";
-
-    if (end > now) {
-      timeLabelEl.textContent = "Ends in";
-      competitionTimeEl.textContent = formatDuration(end - now);
-    } else {
-      timeLabelEl.textContent = "Running";
-      competitionTimeEl.textContent = "--:--:--";
-    }
-
+    timeLabelEl.textContent = "Ends in";
+    if (end > now) startCountdown(end);
     return;
   }
 
@@ -92,21 +283,15 @@ function renderStatus(status = {}) {
     competitionStatusEl.textContent = "ENDED";
     timeLabelEl.textContent = "Finished";
     competitionTimeEl.textContent = "00:00:00";
+    clearInterval(countdownInterval);
     return;
   }
 
   if (currentStatus === "NOT_STARTED") {
     livePill.classList.add("pending");
     competitionStatusEl.textContent = "PENDING";
-
-    if (start > now) {
-      timeLabelEl.textContent = "Starts in";
-      competitionTimeEl.textContent = formatDuration(start - now);
-    } else {
-      timeLabelEl.textContent = "Waiting";
-      competitionTimeEl.textContent = "--:--:--";
-    }
-
+    timeLabelEl.textContent = "Waiting";
+    competitionTimeEl.textContent = "--:--:--";
     return;
   }
 
@@ -117,24 +302,24 @@ function renderStatus(status = {}) {
 }
 
 function renderStats(state) {
-  const trades = state.trades || [];
-  const ranking = state.ranking || [];
+  const trades   = state.trades   || [];
+  const ranking  = state.ranking  || [];
   const products = state.products || [];
 
-  totalTradesEl.textContent = trades.length;
-  activeBotsEl.textContent = ranking.length;
+  totalTradesEl.textContent  = trades.length;
+  activeBotsEl.textContent   = ranking.length;
   totalMarketsEl.textContent = products.length;
 
-  const totalVolume = trades.reduce((sum, trade) => {
-    if (trade.type === "BUY") return sum + Number(trade.amountIn || 0);
-    if (trade.type === "SELL") return sum + Number(trade.amountOut || 0);
+  const totalVolume = trades.reduce((sum, t) => {
+    if (t.type === "BUY")  return sum + Number(t.amountIn  || 0);
+    if (t.type === "SELL") return sum + Number(t.amountOut || 0);
     return sum;
   }, 0);
 
   totalVolumeEl.textContent = `${formatNumber(totalVolume, 2)} CASH`;
 }
 
-function renderProducts(products = [], pools = {}) {
+function renderProducts(products = [], pools = {}, initialPrices = {}) {
   if (!products.length) {
     productsContainer.innerHTML = `<p class="empty">Nenhum mercado encontrado.</p>`;
     return;
@@ -142,24 +327,34 @@ function renderProducts(products = [], pools = {}) {
 
   productsContainer.innerHTML = products
     .map((product) => {
-      const symbol = product.symbol || "TOKEN";
-      const pool = pools[product.address?.toLowerCase()] || {};
-
+      const symbol     = product.symbol || "TOKEN";
+      const pool       = pools[product.address?.toLowerCase()] || {};
+      const spotPrice  = Number(pool.spotPrice  || 0);
       const reserveBase = Number(pool.reserveBase || 0);
-      const liquidity = reserveBase * 2;
+      const liquidity  = reserveBase * 2;
+
+      const initPrice  = initialPrices[product.address?.toLowerCase()];
+      const pctChange  = initPrice && initPrice > 0
+        ? ((spotPrice - initPrice) / initPrice) * 100
+        : null;
+
+      const changeBadge = pctChange !== null
+        ? `<span class="price-change ${pctChange >= 0 ? "up" : "down"}">${
+            pctChange >= 0 ? "+" : ""
+          }${pctChange.toFixed(2)}%</span>`
+        : "";
 
       return `
         <article class="market-card">
           <div class="market-pair">
             <strong>${symbol}/CASH</strong>
+            ${changeBadge}
           </div>
-
           <div class="market-data">
             <div class="market-line">
               <span>Price</span>
-              <strong>${formatNumber(pool.spotPrice, 5)}</strong>
+              <strong>${formatNumber(spotPrice, 5)}</strong>
             </div>
-
             <div class="market-line">
               <span>Liquidity</span>
               <strong>${formatNumber(liquidity, 2)}</strong>
@@ -180,18 +375,16 @@ function renderTrades(trades = [], traderNameMap = {}) {
   tradesContainer.innerHTML = trades
     .slice(0, 14)
     .map((trade) => {
-      const type = trade.type || "-";
+      const type      = trade.type || "-";
       const typeClass = type === "BUY" ? "buy" : "sell";
-
       const traderName =
         trade.traderName ||
-        traderNameMap[trade.trader?.toLowerCase()] ||
+        traderNameMap[(trade.trader || "").toLowerCase()] ||
         shortAddress(trade.trader);
 
-      const amountIn = formatNumber(trade.amountIn, 4);
+      const amountIn  = formatNumber(trade.amountIn,  4);
       const amountOut = formatNumber(trade.amountOut, 4);
-      const product = trade.productSymbol || "PROD";
-
+      const product   = trade.productSymbol || "PROD";
       const flow =
         type === "BUY"
           ? `${amountIn} CASH → ${amountOut} ${product}`
@@ -204,10 +397,8 @@ function renderTrades(trades = [], traderNameMap = {}) {
               <span class="trade-side ${typeClass}">${type}</span>
               <span class="trade-bot">${traderName}</span>
             </div>
-
             <span class="trade-time">${formatTradeTime(trade.timestamp)}</span>
           </div>
-
           <div class="trade-flow">${flow}</div>
         </article>
       `;
@@ -217,37 +408,31 @@ function renderTrades(trades = [], traderNameMap = {}) {
 
 function renderRanking(ranking = [], competitionStatus) {
   if (!ranking.length) {
-    rankingBody.innerHTML = `
-      <tr>
-        <td colspan="4" class="empty">Ranking ainda vazio.</td>
-      </tr>
-    `;
+    rankingBody.innerHTML = `<tr><td colspan="4" class="empty">Ranking ainda vazio.</td></tr>`;
     return;
   }
 
-  const sortedRanking = [...ranking].sort(
-    (a, b) => Number(b.pnl || 0) - Number(a.pnl || 0)
-  );
+  const sorted = [...ranking].sort((a, b) => Number(b.pnl || 0) - Number(a.pnl || 0));
 
-  rankingBody.innerHTML = sortedRanking
+  rankingBody.innerHTML = sorted
     .map((item, index) => {
-      const pnl = Number(item.pnl || 0);
+      const pnl      = Number(item.pnl || 0);
       const pnlClass = pnl >= 0 ? "pnl-positive" : "pnl-negative";
+      const pnlPct   = Number(item.pnlPct || 0);
       const isWinner = competitionStatus === "ENDED" && index === 0;
+      const pnlSign  = pnl >= 0 ? "+" : "";
 
       return `
         <tr class="${isWinner ? "final-winner" : ""}">
           <td><span class="rank">${index + 1}</span></td>
-
           <td>
             <span class="bot-name">${item.name || shortAddress(item.trader)}</span>
             <span class="address">${shortAddress(item.trader)}</span>
           </td>
-
           <td>${formatNumber(item.totalValue, 4)}</td>
-
           <td class="${pnlClass}">
-            ${pnl >= 0 ? "+" : ""}${formatNumber(pnl, 4)}
+            ${pnlSign}${formatNumber(pnl, 2)}
+            <span style="font-size:11px;opacity:0.7">(${pnlSign}${pnlPct.toFixed(1)}%)</span>
           </td>
         </tr>
       `;
@@ -255,41 +440,81 @@ function renderRanking(ranking = [], competitionStatus) {
     .join("");
 }
 
-async function fetchState() {
-  const response = await fetch(`${API_BASE}/state`);
+// ── Main render ───────────────────────────────────────────────────────────────
 
-  if (!response.ok) {
-    throw new Error("Falha ao buscar estado do backend");
+function buildTraderNameMap(ranking) {
+  const map = {};
+  for (const item of ranking || []) {
+    if (item.trader) map[item.trader.toLowerCase()] = item.name || item.trader;
   }
-
-  return response.json();
+  return map;
 }
 
-async function refreshDashboard() {
-  try {
-    const state = await fetchState();
+function renderAll(state) {
+  lastState = state;
 
-    const products = state.products || [];
-    const pools = state.pools || {};
-    const trades = state.trades || [];
-    const ranking = state.ranking || [];
-    const status = state.status || {};
+  const products      = state.products      || [];
+  const pools         = state.pools         || {};
+  const trades        = state.trades        || [];
+  const ranking       = state.ranking       || [];
+  const status        = state.status        || {};
+  const initialPrices = state.initialPrices || {};
+  const traderNameMap = buildTraderNameMap(ranking);
 
-    const traderNameMap = buildTraderNameMap(ranking);
+  renderStatus(status);
+  renderStats(state);
+  renderProducts(products, pools, initialPrices);
+  renderTrades(trades, traderNameMap);
+  renderRanking(ranking, status.competitionStatus);
 
-    renderStatus(status);
-    renderStats(state);
-    renderProducts(products, pools);
-    renderTrades(trades, traderNameMap);
-    renderRanking(ranking, status.competitionStatus);
-  } catch (error) {
-    console.error(error);
+  // Populate token tabs once (products are fixed for the lifetime of a session)
+  if (!tabsInitialized && products.length > 0) {
+    populateTokenTabs(products);
+    tabsInitialized = true;
 
-    competitionStatusEl.textContent = "ERROR";
-    timeLabelEl.textContent = "Backend";
-    competitionTimeEl.textContent = "Offline";
+    // Init chart only after we know the products
+    if (!chart) initChart();
   }
+
+  updateChart(state);
 }
 
-refreshDashboard();
-setInterval(refreshDashboard, 1000);
+// ── SSE connection ────────────────────────────────────────────────────────────
+
+function connectSSE() {
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+
+  eventSource = new EventSource(`${API_BASE}/events`);
+
+  eventSource.onmessage = (event) => {
+    try {
+      const state = JSON.parse(event.data);
+      renderAll(state);
+    } catch (e) {
+      console.error("SSE parse error:", e);
+    }
+  };
+
+  eventSource.onerror = () => {
+    const livePill = document.querySelector(".live-pill");
+    livePill.classList.remove("active", "ended", "pending");
+    livePill.classList.add("error");
+    competitionStatusEl.textContent = "OFFLINE";
+    timeLabelEl.textContent = "Reconectando...";
+
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connectSSE, 3000);
+  };
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+initTfButtons();
+connectSSE();

@@ -35,7 +35,7 @@ body {
   padding: 42px 32px 56px;
 }
 
-/* HEADER */
+/* ── HEADER ─────────────────────────────────────────────────────────────────── */
 
 .header {
   display: flex;
@@ -115,6 +115,15 @@ h1 {
   border-radius: 50%;
 }
 
+.live-pill.active .live-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.75); }
+}
+
 .status-label {
   color: var(--muted);
   font-size: 12px;
@@ -127,7 +136,7 @@ h1 {
   margin-top: 1px;
 }
 
-/* METRICS */
+/* ── METRICS ─────────────────────────────────────────────────────────────────── */
 
 .metrics {
   display: grid;
@@ -155,7 +164,7 @@ h1 {
   font-size: 18px;
 }
 
-/* LAYOUT */
+/* ── LAYOUT ──────────────────────────────────────────────────────────────────── */
 
 .layout {
   display: grid;
@@ -201,9 +210,10 @@ h1 {
   border-radius: 999px;
   padding: 6px 10px;
   font-size: 12px;
+  flex-shrink: 0;
 }
 
-/* MARKETS */
+/* ── MARKETS ─────────────────────────────────────────────────────────────────── */
 
 .market-grid {
   display: grid;
@@ -216,7 +226,8 @@ h1 {
   border: 1px solid var(--border-soft);
   border-radius: 14px;
   padding: 13px 14px;
-  min-height: 92px;
+  min-height: 100px;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .market-card:hover {
@@ -225,6 +236,9 @@ h1 {
 }
 
 .market-pair {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 12px;
 }
 
@@ -232,6 +246,23 @@ h1 {
   font-size: 15px;
   letter-spacing: -0.02em;
   font-weight: 650;
+}
+
+.price-change {
+  font-size: 11px;
+  font-family: monospace;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.price-change.up {
+  color: var(--green);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.price-change.down {
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .market-data {
@@ -254,7 +285,7 @@ h1 {
   font-weight: 600;
 }
 
-/* TABLE */
+/* ── TABLE ───────────────────────────────────────────────────────────────────── */
 
 .table-wrapper {
   overflow-x: auto;
@@ -304,7 +335,7 @@ tbody td {
   color: var(--red);
 }
 
-/* TRADES */
+/* ── TRADES ──────────────────────────────────────────────────────────────────── */
 
 .trades-list {
   display: flex;
@@ -333,6 +364,7 @@ tbody td {
   border: 1px solid var(--border-soft);
   border-radius: 12px;
   padding: 10px;
+  transition: background 0.12s;
 }
 
 .trade-card:hover {
@@ -362,10 +394,12 @@ tbody td {
 
 .trade-side.buy {
   color: var(--green);
+  border-color: rgba(34, 197, 94, 0.35);
 }
 
 .trade-side.sell {
   color: var(--red);
+  border-color: rgba(239, 68, 68, 0.35);
 }
 
 .trade-time {
@@ -389,7 +423,103 @@ tbody td {
   background: rgba(255, 255, 255, 0.03);
 }
 
-/* RESPONSIVE */
+/* ── CHARTS SECTION ─────────────────────────────────────────────────────────── */
+
+.charts-section {
+  margin-top: 18px;
+  padding: 18px;
+}
+
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Token tabs */
+.chart-token-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.chart-tab {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: monospace;
+  padding: 5px 11px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.chart-tab:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+
+.chart-tab.active {
+  background: var(--panel-hover);
+  border-color: var(--muted-2);
+  color: var(--text);
+}
+
+/* Timeframe tabs */
+.chart-tf-tabs {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tf-btn {
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: monospace;
+  padding: 5px 11px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.tf-btn:last-child {
+  border-right: none;
+}
+
+.tf-btn:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+
+.tf-btn.active {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+/* Chart container */
+#chart-container {
+  margin-top: 14px;
+  border-radius: 12px;
+  overflow: hidden;
+  height: 400px;
+  position: relative;
+  background: #0f1419;
+}
+
+.chart-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ── RESPONSIVE ─────────────────────────────────────────────────────────────── */
 
 @media (max-width: 1100px) {
   .market-grid {
@@ -424,6 +554,15 @@ tbody td {
 
   .subtitle {
     font-size: 16px;
+  }
+
+  .chart-controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  #chart-container {
+    height: 280px;
   }
 }
 

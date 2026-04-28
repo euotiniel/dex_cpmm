@@ -7,13 +7,14 @@
     "delay_seconds": 1
   },
   "intervals": {
-    "noise": [1, 8],
-    "shock": [3, 15],
+    "noise": [2, 8],
+    "shock": [4, 18],
     "trend": [2, 10],
     "conservative": [5, 20],
     "momentum": [2, 12],
     "mean_reversion": [3, 14],
-    "market_maker": [3, 10]
+    "market_maker": [3, 10],
+    "arbitrage": [4, 12]
   },
   "noise": {
     "min_cash": 3,
@@ -25,10 +26,10 @@
   "shock": {
     "min_cash": 15,
     "min_buy_amount": 5,
-    "max_buy_cash": 100,
-    "buy_fraction": 0.6,
+    "max_buy_cash": 80,
+    "buy_fraction": 0.5,
     "min_sell_balance": 0.02,
-    "sell_fraction": 0.9
+    "sell_fraction": 0.5
   },
   "trend": {
     "price_up_threshold": 0.008,
@@ -69,14 +70,25 @@
   },
   "market_maker": {
     "anchor_price": 10,
-    "buy_below_pct": 0.001,
-    "sell_above_pct": 0.001,
+    "buy_below_pct": 0.005,
+    "sell_above_pct": 0.005,
     "min_cash": 1,
     "max_buy_cash": 15,
     "buy_fraction": 0.12,
     "min_buy_amount": 0.5,
     "min_sell_balance": 0.001,
     "sell_fraction": 0.2,
-    "explore_probability": 0.35
+    "explore_probability": 0.10
+  },
+  "arbitrage": {
+    "anchor_price": 10,
+    "min_spread_pct": 0.015,
+    "cheap_threshold_pct": 0.01,
+    "expensive_threshold_pct": 0.01,
+    "min_cash": 5,
+    "max_buy_cash": 50,
+    "buy_fraction": 0.30,
+    "min_sell_balance": 0.01,
+    "sell_fraction": 0.50
   }
 }

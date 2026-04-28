@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(yarn add *)",
+      "Bash(yarn compile *)",
+      "Bash(yarn test *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :3001)",
+      "Bash(taskkill /F /PID 23976)",
+      "PowerShell(Stop-Process -Id 23976 -Force -ErrorAction SilentlyContinue)",
+      "Bash(yarn setup:local)",
+      "Bash(node backend/server.js)",
+      "Bash(curl -s http://localhost:3001/status)",
+      "Bash(yarn start:5m)",
+      "Bash(curl -s http://localhost:3001/pools)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(f' {v[\\\\\"product\\\\\"][\\\\\"symbol\\\\\"]}: {v[\\\\\"spotPrice\\\\\"]} CASH'\\) for v in d.values\\(\\)]\")",
+      "Bash(curl -s http://localhost:3001/ranking)",
+      "Bash(python -c \"import sys,json; r=json.load\\(sys.stdin\\); [print\\(f'  {i+1}. {item[\\\\\"name\\\\\"]}: PnL={item[\\\\\"pnl\\\\\"]:.2f} CASH'\\) for i,item in enumerate\\(r\\)]\")",
+      "Bash(python bots/run_all_bots.py)",
+      "Bash(curl -s http://localhost:3001/trades)",
+      "Bash(python -c \"import sys,json; t=json.load\\(sys.stdin\\); [print\\(f' {tr[\\\\\"type\\\\\"]} {tr[\\\\\"productSymbol\\\\\"]} by {tr[\\\\\"traderName\\\\\"]}'\\) for tr in t[:6]]\")",
+      "Bash(python -c \"import sys,json; r=json.load\\(sys.stdin\\); [print\\(f'  {i+1}. {item[\\\\\"name\\\\\"]}: PnL={item[\\\\\"pnl\\\\\"]:.4f}'\\) for i,item in enumerate\\(r\\)]\")",
+      "PowerShell(Get-Process | Where-Object { $_.ProcessName -in @\\(\"node\",\"python\"\\) } | Select-Object Id, ProcessName, StartTime | Sort-Object StartTime -Descending | Select-Object -First 10)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; Write-Host \"Stopped backend\")",
+      "Read(//c/Users/jenil/.claude/projects/c--Users-jenil-OneDrive-Documentos-projectos-projectos-da-universidade-stockX/memory/**)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(gh auth *)",
+      "Bash(git config *)",
+      "PowerShell(winget install --id GitHub.cli --silent --accept-package-agreements --accept-source-agreements)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(gh --version)",
+      "Bash(gh repo *)",
+      "Bash(git remote *)",
+      "Bash(gh pr create --repo euotiniel/dex_cpmm --head jenilsonlucas:main --base main --title 'refactor: security, SSE dashboard, bots config, test suite \\(28 testes\\)' --body ' *)"
+    ]
+  }
+}
