@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+    // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -245,8 +245,9 @@ contract CPMMExchange is Ownable {
 
     function startCompetition(uint256 durationSeconds) external onlyOwner {
         require(
-            competitionStatus == CompetitionStatus.NOT_STARTED,
-            "Competition already started or ended"
+            competitionStatus == CompetitionStatus.NOT_STARTED ||
+            competitionStatus == CompetitionStatus.ENDED,
+            "Competition is already running"
         );
         require(durationSeconds > 0, "Duration must be > 0");
 
@@ -263,7 +264,6 @@ contract CPMMExchange is Ownable {
 
     function endCompetition() external onlyOwner {
         require(competitionStatus == CompetitionStatus.ACTIVE, "Competition is not active");
-        require(block.timestamp >= competitionEndTime, "Competition timer has not expired yet");
 
         competitionStatus = CompetitionStatus.ENDED;
 

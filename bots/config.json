@@ -70,24 +70,25 @@
   },
   "market_maker": {
     "anchor_price": 10,
-    "buy_below_pct": 0.005,
-    "sell_above_pct": 0.005,
+    "buy_below_pct": 0.020,
+    "sell_above_pct": 0.015,
     "min_cash": 1,
-    "max_buy_cash": 15,
-    "buy_fraction": 0.12,
+    "max_buy_cash": 25,
+    "buy_fraction": 0.18,
     "min_buy_amount": 0.5,
     "min_sell_balance": 0.001,
-    "sell_fraction": 0.2,
-    "explore_probability": 0.10
+    "sell_fraction": 0.50,
+    "explore_probability": 0.08
   },
   "arbitrage": {
     "anchor_price": 10,
-    "min_spread_pct": 0.015,
-    "cheap_threshold_pct": 0.01,
-    "expensive_threshold_pct": 0.01,
+    "min_spread_pct": 0.008,
+    "cheap_threshold_pct": 0.005,
+    "expensive_threshold_pct": 0.005,
     "min_cash": 5,
     "max_buy_cash": 50,
     "buy_fraction": 0.30,
+    "min_buy_amount": 0.5,
     "min_sell_balance": 0.01,
     "sell_fraction": 0.50
   }

@@ -411,7 +411,7 @@ app.post("/orchestrate/stop-app", (req, res) => {
   })();
 });
 
-// Restart bots only — starts new competition if current one is not ACTIVE
+// Restart bots only — starts a new competition (contract now allows restart from ENDED)
 app.post("/orchestrate/restart-bots", (req, res) => {
   const validStates = [ORCH_STATE.RUNNING, ORCH_STATE.ERROR, ORCH_STATE.STOPPED];
   if (!validStates.includes(orchestrator.state)) {
@@ -427,27 +427,37 @@ app.post("/orchestrate/restart-bots", (req, res) => {
       await new Promise((r) => setTimeout(r, 2500));
       orchestrator.bots = [];
 
-      // Ensure competition is ACTIVE when bots start (they crash on ENDED status)
+      // End any running competition so we can start a fresh one
       const compStatus = getState().status.competitionStatus;
-      if (compStatus !== "ACTIVE") {
+      if (compStatus === "ACTIVE") {
         try {
-          await startCompetitionOnChain(duration);
-          orchestrator.log(`New competition started (${duration}s)`);
+          await endCompetitionOnChain();
+          orchestrator.log("Previous competition ended");
         } catch (e) {
-          orchestrator.log(`Competition start: ${e.message}`, "WARN");
+          orchestrator.log(`End competition: ${e.message}`, "WARN");
         }
+      }
+
+      // Start fresh competition (contract now allows this from ENDED state too)
+      try {
+        await startCompetitionOnChain(duration);
+        orchestrator.log(`New competition started (${duration}s)`);
+      } catch (e) {
+        orchestrator.log(`Competition start: ${e.message}`, "WARN");
       }
 
       await orchestrator.startBots();
       syncOrchestratorState();
     } catch (err) {
       orchestrator.log(`Restart bots error: ${err.message}`, "ERROR");
+      orchestrator.setState(ORCH_STATE.ERROR);
       syncOrchestratorState();
     }
   })();
 });
 
-// Restart application: stop → reset market → reinit → bots → competition
+// Restart application: full redeploy → fresh pools → reinit → bots → competition
+// This is a hard reset — traders get fresh 1000 CASH, pools start clean.
 app.post("/orchestrate/restart-app", (req, res) => {
   const validStates = [ORCH_STATE.RUNNING, ORCH_STATE.STOPPED, ORCH_STATE.ERROR];
   if (!validStates.includes(orchestrator.state)) {
@@ -455,12 +465,15 @@ app.post("/orchestrate/restart-app", (req, res) => {
   }
   const duration = Math.max(30, Math.min(7200,
     Number((req.body || {}).duration || 300)));
-  res.json({ ok: true, message: "Restarting application…" });
+  res.json({ ok: true, message: "Restarting application (full redeploy)…" });
 
   (async () => {
     try {
-      // Stop phase
+      // Stop phase — kill bots first, then end competition if needed
       orchestrator.setState(ORCH_STATE.STOPPING);
+      orchestrator.stopBots();
+      await new Promise((r) => setTimeout(r, 2000));
+
       const compStatus = getState().status.competitionStatus;
       if (compStatus === "ACTIVE") {
         try {
@@ -470,17 +483,17 @@ app.post("/orchestrate/restart-app", (req, res) => {
           orchestrator.log(`End competition: ${e.message}`, "WARN");
         }
       }
-      orchestrator.stopBots();
-      await new Promise((r) => setTimeout(r, 2000));
-      orchestrator.log("Stopped — resetting market state…");
+      orchestrator.log("Bots stopped — redeploying contracts for clean state…");
 
-      // Reset market balances (re-run setup)
+      // Full redeploy gives fresh token addresses, clean pools, reset balances
+      await orchestrator.deployContracts();
+      syncOrchestratorState();
+
       await orchestrator.setupMarket();
       syncOrchestratorState();
 
-      // Reinit blockchain connection with current addresses
       await reinitBlockchain();
-      orchestrator.log("Blockchain reinitialized");
+      orchestrator.log("Blockchain reinitialized with new contract addresses");
       syncOrchestratorState();
 
       // Clear dead bot records and relaunch
@@ -488,7 +501,6 @@ app.post("/orchestrate/restart-app", (req, res) => {
       await orchestrator.startBots();
       syncOrchestratorState();
 
-      // Start new competition
       await startCompetitionOnChain(duration);
       orchestrator.log(`New competition started (${duration}s)`);
       syncOrchestratorState();

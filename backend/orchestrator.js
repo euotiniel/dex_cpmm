@@ -280,51 +280,83 @@ class Orchestrator extends EventEmitter {
     this.bots = [];
 
     for (const cfg of BOT_CONFIGS) {
-      const proc = this._spawn("python", ["-m", cfg.module]);
+      this._launchBot(cfg);
 
-      const entry = {
-        name:    cfg.name,
-        module:  cfg.module,
-        process: proc,
-        alive:   true,
-        exitCode: null,
-        pid:     proc.pid ?? null,
-      };
-
-      proc.stdout.on("data", (d) => {
-        const text = d.toString().trim();
-        if (text) this.log(`[${cfg.name}] ${text}`, "BOT");
-      });
-
-      proc.stderr.on("data", (d) => {
-        const text = d.toString().trim();
-        if (text) this.log(`[${cfg.name}] ${text}`, "WARN");
-      });
-
-      proc.on("close", (code) => {
-        entry.alive    = false;
-        entry.exitCode = code;
-        this.emit("botExited", cfg.name, code);
-        this.log(
-          `[${cfg.name}] process exited (code=${code})`,
-          code === 0 ? "INFO" : "WARN"
-        );
-      });
-
-      proc.on("error", (err) => {
-        entry.alive = false;
-        this.log(`[${cfg.name}] spawn error: ${err.message}`, "ERROR");
-      });
-
-      this.bots.push(entry);
-      this.log(`Launched: ${cfg.name}`);
-
-      // Stagger launches by 250 ms to avoid a burst of RPC calls at t=0
-      await new Promise((r) => setTimeout(r, 250));
+      // Stagger launches by 300 ms to avoid a burst of RPC calls at t=0
+      await new Promise((r) => setTimeout(r, 300));
     }
 
     this.log("All bots launched");
     this.setState(ORCH_STATE.RUNNING);
+  }
+
+  // ── Internal bot launcher (handles first launch + auto-restarts) ──────────
+
+  _launchBot(cfg, restartCount = 0) {
+    const MAX_RESTARTS   = 5;
+    const RESTART_DELAY  = 5_000; // ms
+
+    const proc = this._spawn("python", ["-m", cfg.module]);
+
+    const entry = {
+      name:     cfg.name,
+      module:   cfg.module,
+      process:  proc,
+      alive:    true,
+      exitCode: null,
+      pid:      proc.pid ?? null,
+    };
+
+    proc.stdout.on("data", (d) => {
+      const text = d.toString().trim();
+      if (text) this.log(`[${cfg.name}] ${text}`, "BOT");
+    });
+
+    proc.stderr.on("data", (d) => {
+      const text = d.toString().trim();
+      if (text) this.log(`[${cfg.name}] ${text}`, "WARN");
+    });
+
+    proc.on("close", (code) => {
+      entry.alive    = false;
+      entry.exitCode = code;
+      this.emit("botExited", cfg.name, code);
+      this.log(
+        `[${cfg.name}] process exited (code=${code})`,
+        code === 0 ? "INFO" : "WARN"
+      );
+
+      // Auto-restart only while the orchestrator is in RUNNING state
+      if (this.state !== ORCH_STATE.RUNNING) return;
+      if (restartCount >= MAX_RESTARTS) {
+        this.log(`[${cfg.name}] max restarts (${MAX_RESTARTS}) reached — will not restart`, "ERROR");
+        return;
+      }
+
+      const nextCount = restartCount + 1;
+      this.log(`[${cfg.name}] restarting in ${RESTART_DELAY / 1000}s (attempt ${nextCount}/${MAX_RESTARTS})`, "WARN");
+
+      setTimeout(() => {
+        if (this.state !== ORCH_STATE.RUNNING) return;
+
+        // Replace the dead entry in-place so the dashboard sees the revived bot
+        const idx = this.bots.indexOf(entry);
+        const newEntry = this._launchBot(cfg, nextCount);
+        if (idx !== -1 && newEntry) this.bots[idx] = newEntry;
+        this.emit("botExited"); // triggers dashboard sync
+      }, RESTART_DELAY);
+    });
+
+    proc.on("error", (err) => {
+      entry.alive = false;
+      this.log(`[${cfg.name}] spawn error: ${err.message}`, "ERROR");
+    });
+
+    // Only push to this.bots on the first launch; restarts update in-place above
+    if (restartCount === 0) this.bots.push(entry);
+    if (restartCount === 0) this.log(`Launched: ${cfg.name}`);
+
+    return entry;
   }
 
   // ── Stop bots ─────────────────────────────────────────────────────────────

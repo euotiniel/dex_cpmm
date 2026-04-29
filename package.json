@@ -6,6 +6,8 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "start": "node backend/server.js",
+    "backend": "node backend/server.js",
     "hhnode": "hardhat node",
     "compile": "hardhat compile",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
@@ -15,7 +17,6 @@
     "start:10m": "cross-env DURATION=600  hardhat run scripts/start.js --network localhost",
     "start:30m": "cross-env DURATION=1800 hardhat run scripts/start.js --network localhost",
     "bootstrap:local": "node scripts/bootstrap.js",
-    "backend": "node backend/server.js",
     "test": "hardhat test"
   },
   "dependencies": {
