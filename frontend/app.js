@@ -296,7 +296,12 @@ function ensureChartProducts(products = []) {
     if (volumeSeries) volumeSeries.setData([]);
   }
 
-  ensureChartProducts(products);
+  if (!tabsInitialized && products.length > 0) {
+    populateTokenTabs(products);
+    tabsInitialized = true;
+
+    if (!chart) initChart();
+  }
 }
 
 function initTfButtons() {
@@ -562,14 +567,7 @@ function renderAll(state) {
   renderTrades(trades, traderNameMap);
   renderRanking(ranking, status.competitionStatus, trades);
 
-  // Populate token tabs once (products are fixed for the lifetime of a session)
-  if (!tabsInitialized && products.length > 0) {
-    populateTokenTabs(products);
-    tabsInitialized = true;
-
-    // Init chart only after we know the products
-    if (!chart) initChart();
-  }
+  ensureChartProducts(products);
 
   updateChart(state);
 }
@@ -669,9 +667,8 @@ function updateButtonStates(state) {
 
   const canRestartApp =
     !isBusy &&
-    (orchState === "RUNNING" ||
-      orchState === "STOPPED" ||
-      orchState === "ERROR");
+    competitionStatus !== "ACTIVE" &&
+    (orchState === "STOPPED" || orchState === "ERROR");
 
   const btnStart = document.getElementById("btn-start-app");
   const btnStop = document.getElementById("btn-stop-app");

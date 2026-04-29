@@ -479,6 +479,12 @@ app.post("/orchestrate/restart-app", (req, res) => {
     Number((req.body || {}).duration || 300)));
   res.json({ ok: true, message: "Restarting application (full redeploy)…" });
 
+  if (getState().status.competitionStatus === "ACTIVE") {
+  return res.status(409).json({
+    error: "Cannot full reset while competition is ACTIVE. Stop the competition first.",
+  });
+}
+
   (async () => {
     try {
       // Stop phase — kill bots first, then end competition if needed
