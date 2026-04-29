@@ -21,43 +21,49 @@ class ShockBot(BaseBot, HumanBehavior):
         product = self.random_product()
         symbol = self.client.get_product_symbol(product)
 
-        if self.mood == "greedy":
-            action = random.choice(["buy", "buy", "buy", "sell"])
-        elif self.mood == "fearful":
-            action = random.choice(["sell", "sell", "buy"])
-        elif self.mood == "confused":
-            action = random.choice(["buy", "sell", "wait"])
-        else:
-            action = random.choice(["buy", "buy", "sell"])
+        balance = self.product_balance(product)
+        cash = self.cash_balance()
 
-        if action == "wait":
-            self.log(f"choque cancelado por indecisao | mood={self.mood}")
-            return
+        # Tenta provocar queda vendendo uma parte grande do inventário.
+        # Isto só funciona depois do bot já ter acumulado tokens.
+        if balance > _CFG["min_sell_balance"] and random.random() < 0.35:
+            sell_power = random.uniform(0.55, 0.95)
+            amount = round(balance * sell_power, 4)
 
-        if action == "buy":
-            cash = self.cash_balance()
-            if cash < _CFG["min_cash"]:
-                self.log("saldo insuficiente para choque de compra")
+            if amount > _CFG["min_sell_balance"]:
+                self.client.sell(product, amount)
+                self.log(
+                    f"DUMP SELL {symbol} | {amount} | queda provocada | mood={self.mood}"
+                )
                 return
 
+        # Se ainda não tem produto suficiente, compra para criar inventário.
+        if cash > _CFG["min_cash"] and random.random() < 0.55:
             base = min(_CFG["max_buy_cash"], cash * _CFG["buy_fraction"])
             amount = self.human_amount(base, _CFG["min_buy_amount"])
 
             self.client.buy(product, amount)
-            self.log(f"CHOQUE BUY {symbol} | {amount} CASH | mood={self.mood}")
+            self.log(
+                f"ACUMULACAO BUY {symbol} | {amount} CASH | mood={self.mood}"
+            )
+            return
 
-        else:
-            balance = self.product_balance(product)
-            if balance < _CFG["min_sell_balance"]:
-                self.log("saldo insuficiente para choque de venda")
-                return
-
+        # Venda normal quando há saldo, mesmo sem dump.
+        if balance > _CFG["min_sell_balance"]:
             base = balance * _CFG["sell_fraction"]
             amount = self.human_amount(base, _CFG["min_sell_balance"])
 
             self.client.sell(product, amount)
-            self.log(f"CHOQUE SELL {symbol} | {amount} | mood={self.mood}")
+            self.log(
+                f"CHOQUE SELL {symbol} | {amount} | mood={self.mood}"
+            )
+            return
+
+        self.log(f"sem saldo para provocar queda em {symbol} | mood={self.mood}")
 
 
 if __name__ == "__main__":
-    ShockBot(private_key=os.getenv("BOT_SHOCK_PK"), name="ShockBot").run()
+    ShockBot(
+        private_key=os.getenv("BOT_SHOCK_PK"),
+        name="ShockBot"
+    ).run()

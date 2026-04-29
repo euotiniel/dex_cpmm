@@ -1,97 +1,97 @@
 {
   "slippage": {
-    "max_price_impact_pct": 2
+    "max_price_impact_pct": 5
   },
   "retry": {
-    "max_attempts": 3,
+    "max_attempts": 4,
     "delay_seconds": 1
   },
   "intervals": {
-    "noise": [2, 9],
-    "shock": [4, 16],
-    "trend": [2, 10],
-    "conservative": [5, 20],
-    "momentum": [2, 12],
-    "mean_reversion": [3, 14],
-    "market_maker": [2, 8],
-    "arbitrage": [3, 9]
+    "noise": [1, 4],
+    "shock": [2, 7],
+    "trend": [1, 5],
+    "conservative": [3, 8],
+    "momentum": [1, 5],
+    "mean_reversion": [2, 6],
+    "market_maker": [1, 4],
+    "arbitrage": [1, 4]
   },
   "noise": {
-    "min_cash": 5,
-    "max_buy_cash": 25,
-    "buy_fraction": 0.18,
-    "min_sell_balance": 0.005,
-    "sell_fraction": 0.45
+    "min_cash": 2,
+    "max_buy_cash": 45,
+    "buy_fraction": 0.35,
+    "min_sell_balance": 0.002,
+    "sell_fraction": 0.75
   },
   "shock": {
-    "min_cash": 10,
+    "min_cash": 5,
     "min_buy_amount": 2,
-    "max_buy_cash": 45,
-    "buy_fraction": 0.28,
-    "min_sell_balance": 0.01,
-    "sell_fraction": 0.55
+    "max_buy_cash": 50,
+    "buy_fraction": 0.35,
+    "min_sell_balance": 0.005,
+    "sell_fraction": 0.75
   },
   "trend": {
-    "price_up_threshold": 0.006,
-    "price_down_threshold": 0.006,
-    "min_cash": 5,
-    "max_buy_cash": 40,
-    "buy_fraction": 0.25,
-    "min_sell_balance": 0.01,
-    "sell_fraction": 0.5
+    "price_up_threshold": 0.003,
+    "price_down_threshold": 0.003,
+    "min_cash": 2,
+    "max_buy_cash": 70,
+    "buy_fraction": 0.45,
+    "min_sell_balance": 0.004,
+    "sell_fraction": 0.75
   },
   "conservative": {
-    "min_cash": 12,
-    "buy_probability": 0.5,
-    "max_buy_cash": 18,
-    "buy_fraction": 0.12,
-    "min_buy_amount": 1,
-    "min_sell_balance": 0.02,
-    "sell_price_threshold": 9,
-    "sell_fraction": 0.3
-  },
-  "momentum": {
-    "up_threshold": 0.006,
-    "down_threshold": 0.006,
     "min_cash": 5,
-    "max_buy_cash": 42,
-    "buy_fraction": 0.26,
-    "min_sell_balance": 0.01,
+    "buy_probability": 0.7,
+    "max_buy_cash": 30,
+    "buy_fraction": 0.22,
+    "min_buy_amount": 1,
+    "min_sell_balance": 0.008,
+    "sell_price_threshold": 8.8,
     "sell_fraction": 0.55
   },
+  "momentum": {
+    "up_threshold": 0.003,
+    "down_threshold": 0.003,
+    "min_cash": 2,
+    "max_buy_cash": 75,
+    "buy_fraction": 0.48,
+    "min_sell_balance": 0.004,
+    "sell_fraction": 0.8
+  },
   "mean_reversion": {
-    "drop_threshold": 0.01,
-    "rise_threshold": 0.01,
-    "min_cash": 5,
-    "max_buy_cash": 38,
-    "buy_fraction": 0.24,
-    "min_sell_balance": 0.01,
-    "sell_fraction": 0.5
+    "drop_threshold": 0.005,
+    "rise_threshold": 0.005,
+    "min_cash": 2,
+    "max_buy_cash": 70,
+    "buy_fraction": 0.45,
+    "min_sell_balance": 0.004,
+    "sell_fraction": 0.75
   },
   "market_maker": {
-    "buy_below_pct": 0.006,
-    "sell_above_pct": 0.006,
+    "buy_below_pct": 0.003,
+    "sell_above_pct": 0.003,
     "min_cash": 1,
-    "max_buy_cash": 25,
-    "buy_fraction": 0.16,
+    "max_buy_cash": 55,
+    "buy_fraction": 0.35,
     "min_buy_amount": 0.5,
-    "min_sell_balance": 0.001,
-    "sell_fraction": 0.45,
-    "rebalance_probability": 0.25,
-    "stop_loss_pct": 0.04
+    "min_sell_balance": 0.0008,
+    "sell_fraction": 0.7,
+    "rebalance_probability": 0.45,
+    "stop_loss_pct": 0.06
   },
   "arbitrage": {
-    "min_spread_pct": 0.003,
-    "cheap_threshold_pct": 0.002,
-    "expensive_threshold_pct": 0.002,
-    "min_cash": 3,
-    "max_buy_cash": 45,
-    "buy_fraction": 0.28,
+    "min_spread_pct": 0.0015,
+    "cheap_threshold_pct": 0.001,
+    "expensive_threshold_pct": 0.001,
+    "min_cash": 1,
+    "max_buy_cash": 85,
+    "buy_fraction": 0.55,
     "min_buy_amount": 0.5,
-    "min_sell_balance": 0.004,
-    "sell_fraction": 0.45,
-    "explore_probability": 0.25,
-    "momentum_exit_probability": 0.18,
-    "momentum_exit_pct": 0.006
+    "min_sell_balance": 0.001,
+    "sell_fraction": 0.75,
+    "explore_probability": 0.45,
+    "momentum_exit_probability": 0.35,
+    "momentum_exit_pct": 0.003
   }
 }
