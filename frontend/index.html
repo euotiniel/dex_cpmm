@@ -33,37 +33,36 @@
       </header>
 
       <!-- ── Control Panel ──────────────────────────────────────────────── -->
-      <section class="panel ctrl-panel">
-        <div class="ctrl-top">
-          <div>
-            <h2>Control Panel</h2>
-            <p>Orchestrate the full simulation — no terminal needed</p>
-          </div>
-          <div class="ctrl-top-right">
-            <div class="orch-badge" id="orch-badge">IDLE</div>
-            <a href="/system" class="sys-monitor-link">System Monitor →</a>
-          </div>
-        </div>
+     <section class="panel ctrl-panel ctrl-compact">
+  <div class="ctrl-mainline">
+    <div class="ctrl-left">
+      <span class="ctrl-label">Control</span>
+      <div class="orch-badge" id="orch-badge">IDLE</div>
+    </div>
 
-        <div class="ctrl-simple">
-          <div class="ctrl-duration-row">
-            <label for="competition-duration">Duration (s)</label>
-            <input
-              type="number"
-              id="competition-duration"
-              value="300"
-              min="30"
-              max="7200"
-            />
-          </div>
-          <div class="ctrl-btn-grid">
-            <button id="btn-start-app" class="cbtn cbtn-primary">Start</button>
-<button id="btn-stop-app" class="cbtn cbtn-danger">Stop</button>
-<button id="btn-restart-bots" class="cbtn cbtn-secondary">Restart Bots</button>
-<button id="btn-restart-app" class="cbtn cbtn-ghost">Full Reset</button>
-          </div>
-        </div>
-      </section>
+    <div class="ctrl-duration-inline">
+      <span>Duração</span>
+      <input
+        type="number"
+        id="competition-duration"
+        value="300"
+        min="30"
+        max="7200"
+      />
+      <span>s</span>
+    </div>
+
+    <div class="ctrl-actions-inline">
+      <button id="btn-start-app" class="cbtn cbtn-primary">Start</button>
+      <button id="btn-stop-app" class="cbtn cbtn-danger">Stop</button>
+      <button id="btn-restart-bots" class="cbtn cbtn-secondary">Restart Bots</button>
+      <button id="btn-restart-app" class="cbtn cbtn-ghost">Full Reset</button>
+      <a href="/system" class="sys-monitor-link">System</a>
+    </div>
+  </div>
+
+  <p id="ctrl-hint" class="ctrl-hint">Pronto para iniciar.</p>
+</section>
 
       <!-- ── Metrics ────────────────────────────────────────────────────── -->
       <section class="metrics">
@@ -120,11 +119,12 @@
                   <th>Bot</th>
                   <th>Total Value</th>
                   <th>PnL</th>
+                  <th>Ops</th>
                 </tr>
               </thead>
               <tbody id="ranking-body">
                 <tr>
-                  <td colspan="4" class="empty">A carregar ranking...</td>
+                  <td colspan="5" class="empty">A carregar ranking...</td>
                 </tr>
               </tbody>
             </table>

@@ -381,18 +381,26 @@ app.post("/orchestrate/full-start", (req, res) => {
 
 // Stop application: end competition + stop bots → STOPPED
 app.post("/orchestrate/stop-app", (req, res) => {
-  const validStates = [ORCH_STATE.RUNNING, ORCH_STATE.ERROR];
-  if (!validStates.includes(orchestrator.state)) {
-    return res.status(409).json({ error: `Cannot stop from state: ${orchestrator.state}` });
+  const compStatus = getState().status.competitionStatus;
+
+  const valid =
+    orchestrator.state === ORCH_STATE.RUNNING ||
+    orchestrator.state === ORCH_STATE.ERROR ||
+    compStatus === "ACTIVE";
+
+  if (!valid) {
+    return res.status(409).json({
+      error: `Cannot stop from state: ${orchestrator.state}`,
+    });
   }
+
   res.json({ ok: true, message: "Stopping application…" });
 
   (async () => {
     try {
       orchestrator.setState(ORCH_STATE.STOPPING);
 
-      const compStatus = getState().status.competitionStatus;
-      if (compStatus === "ACTIVE") {
+      if (getState().status.competitionStatus === "ACTIVE") {
         try {
           await endCompetitionOnChain();
           orchestrator.log("Competition ended on-chain");
@@ -402,9 +410,11 @@ app.post("/orchestrate/stop-app", (req, res) => {
       }
 
       orchestrator.stopBots();
+
       await new Promise((r) => setTimeout(r, 1500));
+
       orchestrator.setState(ORCH_STATE.STOPPED);
-      orchestrator.log("Application stopped — click Start Application to resume");
+      orchestrator.log("Application stopped");
       syncOrchestratorState();
     } catch (err) {
       orchestrator.log(`Stop error: ${err.message}`, "ERROR");

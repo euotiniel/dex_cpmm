@@ -784,6 +784,34 @@ tbody td {
   color: var(--red);
 }
 
+.ops-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ops-cell strong {
+  font-family: monospace;
+  display: none;
+  font-size: 13px;
+}
+
+.ops-breakdown {
+  display: flex;
+  gap: 6px;
+  font-family: monospace;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.op-buy {
+  color: var(--green);
+}
+
+.op-sell {
+  color: var(--red);
+}
+
 /* ── TRADES ──────────────────────────────────────────────────────────────────── */
 
 .trades-list {
@@ -1024,5 +1052,93 @@ tbody td {
   .header-status {
     width: 100%;
     justify-content: space-between;
+  }
+}
+
+
+.ctrl-compact {
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.ctrl-mainline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ctrl-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: fit-content;
+}
+
+.ctrl-label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.ctrl-duration-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ctrl-duration-inline input {
+  width: 78px;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: monospace;
+  padding: 6px 8px;
+  outline: none;
+}
+
+.ctrl-actions-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ctrl-actions-inline .cbtn {
+  width: auto;
+  padding: 7px 10px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.ctrl-actions-inline .sys-monitor-link {
+  padding: 7px 10px;
+}
+
+.ctrl-hint {
+  color: var(--muted-2);
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+.orch-badge.MANUAL_ACTIVE,
+.orch-badge.manual_active {
+  color: var(--yellow);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+@media (max-width: 820px) {
+  .ctrl-mainline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ctrl-actions-inline {
+    justify-content: flex-start;
   }
 }

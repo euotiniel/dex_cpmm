@@ -406,9 +406,33 @@ function renderTrades(trades = [], traderNameMap = {}) {
     .join("");
 }
 
-function renderRanking(ranking = [], competitionStatus) {
+
+function getTraderTradeStats(trades = [], traderAddress) {
+  const key = (traderAddress || "").toLowerCase();
+
+  const stats = {
+    total: 0,
+    buys: 0,
+    sells: 0,
+  };
+
+  for (const trade of trades) {
+    if ((trade.trader || "").toLowerCase() !== key) continue;
+
+    stats.total += 1;
+
+    if (trade.type === "BUY") stats.buys += 1;
+    if (trade.type === "SELL") stats.sells += 1;
+  }
+
+  return stats;
+}
+
+
+
+function renderRanking(ranking = [], competitionStatus, trades = []) {
   if (!ranking.length) {
-    rankingBody.innerHTML = `<tr><td colspan="4" class="empty">Ranking ainda vazio.</td></tr>`;
+    rankingBody.innerHTML = `<tr><td colspan="5" class="empty">Ranking ainda vazio.</td></tr>`;
     return;
   }
 
@@ -421,19 +445,36 @@ function renderRanking(ranking = [], competitionStatus) {
       const pnlPct   = Number(item.pnlPct || 0);
       const isWinner = competitionStatus === "ENDED" && index === 0;
       const pnlSign  = pnl >= 0 ? "+" : "";
+      const stats    = getTraderTradeStats(trades, item.trader);
 
       return `
         <tr class="${isWinner ? "final-winner" : ""}">
           <td><span class="rank">${index + 1}</span></td>
+
           <td>
             <span class="bot-name">${item.name || shortAddress(item.trader)}</span>
             <span class="address">${shortAddress(item.trader)}</span>
           </td>
+
+          
+
           <td>${formatNumber(item.totalValue, 4)}</td>
+
           <td class="${pnlClass}">
             ${pnlSign}${formatNumber(pnl, 2)}
             <span style="font-size:11px;opacity:0.7">(${pnlSign}${pnlPct.toFixed(1)}%)</span>
           </td>
+
+          <td>
+            <div class="ops-cell">
+              <strong>${stats.total}</strong>
+              <span class="ops-breakdown">
+                <span class="op-buy">↑ ${stats.buys}</span>
+                <span class="op-sell">↓ ${stats.sells}</span>
+              </span>
+            </div>
+          </td>
+
         </tr>
       `;
     })
@@ -466,7 +507,7 @@ function renderAll(state) {
   renderStats(state);
   renderProducts(products, pools, initialPrices);
   renderTrades(trades, traderNameMap);
-  renderRanking(ranking, status.competitionStatus);
+  renderRanking(ranking, status.competitionStatus, trades);
 
   // Populate token tabs once (products are fixed for the lifetime of a session)
   if (!tabsInitialized && products.length > 0) {
@@ -537,28 +578,68 @@ function renderOrchestratorBadge(orchState) {
   el.className   = "orch-badge " + orchBadgeClass(orchState);
 }
 
-function updateButtonStates(orchState) {
-  const isBusy  = TRANSITIONING.has(orchState);
-  const canStart = (orchState === "IDLE" || orchState === "STOPPED") && !isBusy;
-  const canStop  = orchState === "RUNNING";
-  const canRestartBots = (orchState === "RUNNING" || orchState === "ERROR") && !isBusy;
-  const canRestartApp  = (orchState === "RUNNING" || orchState === "STOPPED" || orchState === "ERROR") && !isBusy;
+function getUiSystemMode(state) {
+  const orchState = state.orchestrator?.state || "IDLE";
+  const competitionStatus = state.status?.competitionStatus || "NOT_STARTED";
+
+  if (competitionStatus === "ACTIVE" && (orchState === "IDLE" || orchState === "STOPPED")) {
+    return "MANUAL_ACTIVE";
+  }
+
+  return orchState;
+}
+
+function updateButtonStates(state) {
+  const orchState = state.orchestrator?.state || "IDLE";
+  const competitionStatus = state.status?.competitionStatus || "NOT_STARTED";
+  const mode = getUiSystemMode(state);
+
+  const isBusy = TRANSITIONING.has(orchState);
+
+  const canStart =
+    !isBusy &&
+    competitionStatus !== "ACTIVE" &&
+    (orchState === "IDLE" || orchState === "STOPPED");
+
+  const canStop =
+    !isBusy &&
+    (orchState === "RUNNING" || competitionStatus === "ACTIVE");
+
+  const canRestartBots =
+    !isBusy &&
+    orchState !== "IDLE" &&
+    competitionStatus !== "ACTIVE";
+
+  const canRestartApp =
+    !isBusy &&
+    (orchState === "RUNNING" || orchState === "STOPPED" || orchState === "ERROR");
 
   const btnStart       = document.getElementById("btn-start-app");
   const btnStop        = document.getElementById("btn-stop-app");
   const btnRestartBots = document.getElementById("btn-restart-bots");
   const btnRestartApp  = document.getElementById("btn-restart-app");
 
-  if (btnStart)       btnStart.disabled       = !canStart;
-  if (btnStop)        btnStop.disabled         = !canStop;
-  if (btnRestartBots) btnRestartBots.disabled  = !canRestartBots;
-  if (btnRestartApp)  btnRestartApp.disabled   = !canRestartApp;
+  if (btnStart)       btnStart.disabled = !canStart;
+  if (btnStop)        btnStop.disabled = !canStop;
+  if (btnRestartBots) btnRestartBots.disabled = !canRestartBots;
+  if (btnRestartApp)  btnRestartApp.disabled = !canRestartApp;
+
+  const hint = document.getElementById("ctrl-hint");
+  if (hint) {
+    if (mode === "MANUAL_ACTIVE") {
+      hint.textContent = "Competição ativa fora do orchestrator. A UI pode ver o estado, mas pode não controlar bots iniciados no terminal.";
+    } else if (competitionStatus === "ACTIVE") {
+      hint.textContent = "Competição em execução.";
+    } else {
+      hint.textContent = "Pronto para iniciar.";
+    }
+  }
 }
 
 function renderControlPanel(state) {
-  const orch = state.orchestrator || {};
-  renderOrchestratorBadge(orch.state || "IDLE");
-  updateButtonStates(orch.state || "IDLE");
+  const mode = getUiSystemMode(state);
+  renderOrchestratorBadge(mode);
+  updateButtonStates(state);
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
