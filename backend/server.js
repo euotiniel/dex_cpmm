@@ -15,6 +15,7 @@ import {
   setOrchestratorState,
   setFairness,
   setExternalBots,
+  resetCompetitionData,
 } from "./state.js";
 
 import {
@@ -365,6 +366,8 @@ app.post("/orchestrate/full-start", (req, res) => {
       await orchestrator.startBots();
       syncOrchestratorState();
 
+      resetCompetitionData();
+
       await startCompetitionOnChain(duration);
       orchestrator.log(`Competition started — ${duration}s duration`);
       syncOrchestratorState();
@@ -428,18 +431,17 @@ app.post("/orchestrate/restart-bots", (req, res) => {
       orchestrator.bots = [];
 
       // End any running competition so we can start a fresh one
-      const compStatus = getState().status.competitionStatus;
-      if (compStatus === "ACTIVE") {
-        try {
-          await endCompetitionOnChain();
-          orchestrator.log("Previous competition ended");
-        } catch (e) {
-          orchestrator.log(`End competition: ${e.message}`, "WARN");
-        }
-      }
+      try {
+  await endCompetitionOnChain();
+  orchestrator.log("Previous competition ended");
+} catch (e) {
+  orchestrator.log(`End competition skipped: ${e.message}`, "WARN");
+}
 
       // Start fresh competition (contract now allows this from ENDED state too)
       try {
+          resetCompetitionData();
+
         await startCompetitionOnChain(duration);
         orchestrator.log(`New competition started (${duration}s)`);
       } catch (e) {
@@ -500,6 +502,8 @@ app.post("/orchestrate/restart-app", (req, res) => {
       orchestrator.bots = [];
       await orchestrator.startBots();
       syncOrchestratorState();
+
+      resetCompetitionData();
 
       await startCompetitionOnChain(duration);
       orchestrator.log(`New competition started (${duration}s)`);

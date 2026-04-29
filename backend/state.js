@@ -79,6 +79,35 @@ export function savePersistence() {
   }
 }
 
+export function resetCompetitionData() {
+  state.trades = [];
+  state.ranking = [];
+  state.fairness = null;
+  state.volume = {};
+  state.priceHistory = {};
+  state.initialPrices = {};
+  state.traderStats = {};
+
+  for (const trader of state.traders) {
+    const key = trader.address.toLowerCase();
+    state.traderStats[key] = {
+      trader: trader.address,
+      name: trader.name,
+      totalTrades: 0,
+      buys: 0,
+      sells: 0,
+      volume: 0,
+      lastTradeAt: null,
+    };
+  }
+
+  _tradesSinceLastSave = 0;
+  savePersistence();
+
+  state.lastUpdatedAt = Date.now();
+  emitter.emit("changed");
+}
+
 // ── Orchestrator state setter ─────────────────────────────────────────────────
 // Allows the orchestrator to push its status through the existing SSE pipeline
 // without creating a separate broadcast channel.

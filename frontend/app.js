@@ -586,12 +586,18 @@ function getDuration() {
 function withLoading(btn, fn) {
   const orig = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "⏳ Working…";
-  fn().catch((err) => {
-    console.error("Button action failed:", err.message);
-  }).finally(() => {
-    btn.textContent = orig;
-  });
+  btn.textContent = "Working…";
+
+  fn()
+    .catch((err) => {
+      console.error("Button action failed:", err.message);
+      alert(err.message);
+    })
+    .finally(() => {
+      btn.textContent = orig;
+      btn.disabled = false;
+      if (lastState) renderControlPanel(lastState);
+    });
 }
 
 // ── Button wiring ─────────────────────────────────────────────────────────────
