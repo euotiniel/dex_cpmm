@@ -203,13 +203,20 @@ async function main() {
   const botAddresses = accounts.slice(1, 9);
   const botPrivateKeys = privateKeys.slice(1, 9);
 
-  const envValues = {
-    RPC_URL: "http://127.0.0.1:8545",
-    INITIAL_BASE_BALANCE: "1000",
-    TRADERS_FILE: "traders.json",
-    PORT: "3001",
-    ...deployed,
-  };
+const envValues = {
+  RPC_URL: "http://127.0.0.1:8545",
+
+  // INITIAL_BASE_BALANCE = valor inicial total usado no cálculo do PnL
+  // Fórmula:
+  // CASH inicial + (tokens por produto × número de produtos × preço inicial)
+  // Exemplo atual:
+  // 1000 + (15 × 5 × 10) = 1750
+  INITIAL_BASE_BALANCE: "1750",
+
+  TRADERS_FILE: "traders.json",
+  PORT: "3001",
+  ...deployed,
+};
 
   for (let i = 0; i < BOT_KEYS.length; i++) {
     envValues[BOT_KEYS[i]] = botPrivateKeys[i];
