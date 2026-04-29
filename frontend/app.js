@@ -1,6 +1,5 @@
 const API_BASE = "http://localhost:3001";
 
-// ── DOM refs ──────────────────────────────────────────────────────────────────
 const competitionStatusEl = document.getElementById("competition-status");
 const competitionTimeEl = document.getElementById("competition-time");
 const timeLabelEl = document.getElementById("time-label");
@@ -12,30 +11,25 @@ const activeBotsEl = document.getElementById("active-bots");
 const totalMarketsEl = document.getElementById("total-markets");
 const totalVolumeEl = document.getElementById("total-volume");
 
-// ── Chart state ───────────────────────────────────────────────────────────────
 let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
 let selectedProductAddress = null;
-let selectedTimeframe = 5; // seconds
+let selectedTimeframe = 5;
 let tabsInitialized = false;
 let lastState = null;
 let lastProductsSignature = "";
 
-// ── Countdown state ───────────────────────────────────────────────────────────
 let countdownInterval = null;
 let _countdownEndTime = 0;
+let _serverClockOffsetMs = 0;
 
-// ── SSE state ─────────────────────────────────────────────────────────────────
 let eventSource = null;
 let reconnectTimer = null;
 
-// ── Formatters ────────────────────────────────────────────────────────────────
-
 function formatNumber(value, digits = 4) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "-";
-  }
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+
   return Number(value).toLocaleString("pt-PT", {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits,
@@ -57,6 +51,7 @@ function formatDuration(seconds) {
 
 function formatTradeTime(timestamp) {
   if (!timestamp) return "-";
+
   return new Date(timestamp).toLocaleTimeString("pt-PT", {
     hour: "2-digit",
     minute: "2-digit",
@@ -64,29 +59,31 @@ function formatTradeTime(timestamp) {
   });
 }
 
-// ── Countdown ─────────────────────────────────────────────────────────────────
+function startCountdown(endTimeUnix, serverNowMs = Date.now()) {
+  _serverClockOffsetMs = serverNowMs - Date.now();
 
-function startCountdown(endTimeUnix) {
-  if (endTimeUnix === _countdownEndTime) return;
+  if (endTimeUnix === _countdownEndTime && countdownInterval) return;
+
   _countdownEndTime = endTimeUnix;
-
   clearInterval(countdownInterval);
-  countdownInterval = setInterval(() => {
-    const remaining = _countdownEndTime - Math.floor(Date.now() / 1000);
+
+  const tick = () => {
+    const nowUnix = Math.floor((Date.now() + _serverClockOffsetMs) / 1000);
+    const remaining = _countdownEndTime - nowUnix;
+
     if (remaining <= 0) {
       competitionTimeEl.textContent = "00:00:00";
       clearInterval(countdownInterval);
+      countdownInterval = null;
       return;
     }
+
     competitionTimeEl.textContent = formatDuration(remaining);
-  }, 1000);
+  };
 
-  // Render immediately without waiting 1s
-  const remaining = endTimeUnix - Math.floor(Date.now() / 1000);
-  competitionTimeEl.textContent = formatDuration(Math.max(0, remaining));
+  tick();
+  countdownInterval = setInterval(tick, 1000);
 }
-
-// ── Candle builders ───────────────────────────────────────────────────────────
 
 function buildCandles(pricePoints, timeframeSec) {
   if (!pricePoints || pricePoints.length === 0) return [];
@@ -96,8 +93,9 @@ function buildCandles(pricePoints, timeframeSec) {
 
   for (const { t, p } of pricePoints) {
     if (!p || p <= 0) continue;
+
     const bucketMs = Math.floor(t / tfMs) * tfMs;
-    const timeUnix = Math.floor(bucketMs / 1000); // lightweight-charts: seconds
+    const timeUnix = Math.floor(bucketMs / 1000);
 
     if (!bucketMap.has(timeUnix)) {
       bucketMap.set(timeUnix, {
@@ -141,7 +139,9 @@ function buildVolume(trades, productAddress, timeframeSec) {
         time: timeUnix,
         value: vol,
         color:
-          trade.type === "BUY" ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)",
+          trade.type === "BUY"
+            ? "rgba(34,197,94,0.4)"
+            : "rgba(239,68,68,0.4)",
       });
     } else {
       bucketMap.get(timeUnix).value += vol;
@@ -150,8 +150,6 @@ function buildVolume(trades, productAddress, timeframeSec) {
 
   return Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
 }
-
-// ── Chart init & update ───────────────────────────────────────────────────────
 
 function initChart() {
   const container = document.getElementById("chart-container");
@@ -195,7 +193,6 @@ function initChart() {
     scaleMargins: { top: 0.82, bottom: 0 },
   });
 
-  // Remove the placeholder text once the chart is mounted
   const placeholder = container.querySelector(".chart-empty");
   if (placeholder) placeholder.remove();
 
@@ -208,7 +205,6 @@ function updateChart(state) {
   if (!chart || !candleSeries || !selectedProductAddress) return;
 
   const productKey = selectedProductAddress.toLowerCase();
-
   let priceHistory = (state.priceHistory || {})[productKey] || [];
   const trades = state.trades || [];
 
@@ -217,17 +213,11 @@ function updateChart(state) {
     const spotPrice = Number(pool?.spotPrice || 0);
 
     if (spotPrice > 0) {
-      priceHistory = [
-        {
-          t: Date.now(),
-          p: spotPrice,
-        },
-      ];
+      priceHistory = [{ t: state.lastUpdatedAt || Date.now(), p: spotPrice }];
     }
   }
 
   const candles = buildCandles(priceHistory, selectedTimeframe);
-
   const volume = buildVolume(trades, selectedProductAddress, selectedTimeframe);
 
   candleSeries.setData(candles);
@@ -244,15 +234,11 @@ function updateChart(state) {
   }
 }
 
-// ── Token tab management ──────────────────────────────────────────────────────
-
 function populateTokenTabs(products) {
   const tabContainer = document.getElementById("chart-token-tabs");
   if (!tabContainer || !products.length) return;
 
-  if (!selectedProductAddress) {
-    selectedProductAddress = products[0].address;
-  }
+  if (!selectedProductAddress) selectedProductAddress = products[0].address;
 
   tabContainer.innerHTML = products
     .map((p) => {
@@ -260,19 +246,22 @@ function populateTokenTabs(products) {
         p.address.toLowerCase() === selectedProductAddress.toLowerCase()
           ? "active"
           : "";
-      return `<button class="chart-tab ${active}" data-address="${p.address}">${
-        p.symbol || p.address.slice(0, 6)
-      }</button>`;
+
+      return `<button class="chart-tab ${active}" data-address="${p.address}">
+        ${p.symbol || p.address.slice(0, 6)}
+      </button>`;
     })
     .join("");
 
   tabContainer.querySelectorAll(".chart-tab").forEach((btn) => {
     btn.addEventListener("click", () => {
-      tabContainer
-        .querySelectorAll(".chart-tab")
-        .forEach((b) => b.classList.remove("active"));
+      tabContainer.querySelectorAll(".chart-tab").forEach((b) => {
+        b.classList.remove("active");
+      });
+
       btn.classList.add("active");
       selectedProductAddress = btn.dataset.address;
+
       if (lastState) updateChart(lastState);
     });
   });
@@ -284,7 +273,6 @@ function getProductsSignature(products = []) {
 
 function ensureChartProducts(products = []) {
   const signature = getProductsSignature(products);
-
   if (!signature) return;
 
   if (signature !== lastProductsSignature) {
@@ -307,31 +295,42 @@ function ensureChartProducts(products = []) {
 function initTfButtons() {
   document.querySelectorAll(".tf-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document
-        .querySelectorAll(".tf-btn")
-        .forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tf-btn").forEach((b) => {
+        b.classList.remove("active");
+      });
+
       btn.classList.add("active");
       selectedTimeframe = Number(btn.dataset.tf);
+
       if (lastState) updateChart(lastState);
     });
   });
 }
 
-// ── UI renderers ──────────────────────────────────────────────────────────────
-
-function renderStatus(status = {}) {
+function renderStatus(status = {}, serverNowMs = Date.now()) {
   const currentStatus = status.competitionStatus || "UNKNOWN";
   const livePill = document.querySelector(".live-pill");
+
   livePill.classList.remove("active", "ended", "pending", "error");
 
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(serverNowMs / 1000);
   const end = Number(status.competitionEndTime || 0);
 
-  if (currentStatus === "ACTIVE") {
+  if (currentStatus === "ACTIVE" && end > now) {
     livePill.classList.add("active");
     competitionStatusEl.textContent = "LIVE";
     timeLabelEl.textContent = "Ends in";
-    if (end > now) startCountdown(end);
+    startCountdown(end, serverNowMs);
+    return;
+  }
+
+  if (currentStatus === "ACTIVE" && end <= now) {
+    livePill.classList.add("ended");
+    competitionStatusEl.textContent = "ENDED";
+    timeLabelEl.textContent = "Finished";
+    competitionTimeEl.textContent = "00:00:00";
+    clearInterval(countdownInterval);
+    countdownInterval = null;
     return;
   }
 
@@ -341,6 +340,7 @@ function renderStatus(status = {}) {
     timeLabelEl.textContent = "Finished";
     competitionTimeEl.textContent = "00:00:00";
     clearInterval(countdownInterval);
+    countdownInterval = null;
     return;
   }
 
@@ -349,6 +349,8 @@ function renderStatus(status = {}) {
     competitionStatusEl.textContent = "PENDING";
     timeLabelEl.textContent = "Waiting";
     competitionTimeEl.textContent = "--:--:--";
+    clearInterval(countdownInterval);
+    countdownInterval = null;
     return;
   }
 
@@ -385,12 +387,13 @@ function renderProducts(products = [], pools = {}, initialPrices = {}) {
   productsContainer.innerHTML = products
     .map((product) => {
       const symbol = product.symbol || "TOKEN";
-      const pool = pools[product.address?.toLowerCase()] || {};
+      const key = product.address?.toLowerCase();
+      const pool = pools[key] || {};
       const spotPrice = Number(pool.spotPrice || 0);
       const reserveBase = Number(pool.reserveBase || 0);
       const liquidity = reserveBase * 2;
+      const initPrice = initialPrices[key];
 
-      const initPrice = initialPrices[product.address?.toLowerCase()];
       const pctChange =
         initPrice && initPrice > 0
           ? ((spotPrice - initPrice) / initPrice) * 100
@@ -398,9 +401,9 @@ function renderProducts(products = [], pools = {}, initialPrices = {}) {
 
       const changeBadge =
         pctChange !== null
-          ? `<span class="price-change ${pctChange >= 0 ? "up" : "down"}">${
-              pctChange >= 0 ? "+" : ""
-            }${pctChange.toFixed(2)}%</span>`
+          ? `<span class="price-change ${pctChange >= 0 ? "up" : "down"}">
+              ${pctChange >= 0 ? "+" : ""}${pctChange.toFixed(2)}%
+            </span>`
           : "";
 
       return `
@@ -444,6 +447,7 @@ function renderTrades(trades = [], traderNameMap = {}) {
       const amountIn = formatNumber(trade.amountIn, 4);
       const amountOut = formatNumber(trade.amountOut, 4);
       const product = trade.productSymbol || "PROD";
+
       const flow =
         type === "BUY"
           ? `${amountIn} CASH → ${amountOut} ${product}`
@@ -467,18 +471,12 @@ function renderTrades(trades = [], traderNameMap = {}) {
 
 function getTraderTradeStats(trades = [], traderAddress) {
   const key = (traderAddress || "").toLowerCase();
-
-  const stats = {
-    total: 0,
-    buys: 0,
-    sells: 0,
-  };
+  const stats = { total: 0, buys: 0, sells: 0 };
 
   for (const trade of trades) {
     if ((trade.trader || "").toLowerCase() !== key) continue;
 
     stats.total += 1;
-
     if (trade.type === "BUY") stats.buys += 1;
     if (trade.type === "SELL") stats.sells += 1;
   }
@@ -493,7 +491,7 @@ function renderRanking(ranking = [], competitionStatus, trades = []) {
   }
 
   const sorted = [...ranking].sort(
-    (a, b) => Number(b.pnl || 0) - Number(a.pnl || 0),
+    (a, b) => Number(b.pnl || 0) - Number(a.pnl || 0)
   );
 
   rankingBody.innerHTML = sorted
@@ -514,13 +512,13 @@ function renderRanking(ranking = [], competitionStatus, trades = []) {
             <span class="address">${shortAddress(item.trader)}</span>
           </td>
 
-          
-
           <td>${formatNumber(item.totalValue, 4)}</td>
 
           <td class="${pnlClass}">
             ${pnlSign}${formatNumber(pnl, 2)}
-            <span style="font-size:11px;opacity:0.7">(${pnlSign}${pnlPct.toFixed(1)}%)</span>
+            <span style="font-size:11px;opacity:0.7">
+              (${pnlSign}${pnlPct.toFixed(1)}%)
+            </span>
           </td>
 
           <td>
@@ -532,20 +530,19 @@ function renderRanking(ranking = [], competitionStatus, trades = []) {
               </span>
             </div>
           </td>
-
         </tr>
       `;
     })
     .join("");
 }
 
-// ── Main render ───────────────────────────────────────────────────────────────
-
 function buildTraderNameMap(ranking) {
   const map = {};
+
   for (const item of ranking || []) {
     if (item.trader) map[item.trader.toLowerCase()] = item.name || item.trader;
   }
+
   return map;
 }
 
@@ -561,18 +558,15 @@ function renderAll(state) {
   const traderNameMap = buildTraderNameMap(ranking);
 
   renderControlPanel(state);
-  renderStatus(status);
+  renderStatus(status, state.lastUpdatedAt || Date.now());
   renderStats(state);
   renderProducts(products, pools, initialPrices);
   renderTrades(trades, traderNameMap);
   renderRanking(ranking, status.competitionStatus, trades);
 
   ensureChartProducts(products);
-
   updateChart(state);
 }
-
-// ── SSE connection ────────────────────────────────────────────────────────────
 
 function connectSSE() {
   if (eventSource) {
@@ -595,6 +589,7 @@ function connectSSE() {
     const livePill = document.querySelector(".live-pill");
     livePill.classList.remove("active", "ended", "pending");
     livePill.classList.add("error");
+
     competitionStatusEl.textContent = "OFFLINE";
     timeLabelEl.textContent = "Reconectando...";
 
@@ -608,8 +603,6 @@ function connectSSE() {
   };
 }
 
-// ── Control Panel ─────────────────────────────────────────────────────────────
-
 const TRANSITIONING = new Set([
   "STARTING_NODE",
   "DEPLOYING",
@@ -622,6 +615,7 @@ function orchBadgeClass(orchState) {
   if (orchState === "RUNNING") return "running";
   if (orchState === "ERROR") return "error";
   if (orchState === "STOPPED") return "stopped";
+  if (orchState === "MANUAL_ACTIVE") return "manual_active";
   if (TRANSITIONING.has(orchState)) return "working";
   return "";
 }
@@ -629,6 +623,7 @@ function orchBadgeClass(orchState) {
 function renderOrchestratorBadge(orchState) {
   const el = document.getElementById("orch-badge");
   if (!el) return;
+
   el.textContent = orchState || "IDLE";
   el.className = "orch-badge " + orchBadgeClass(orchState);
 }
@@ -651,7 +646,6 @@ function updateButtonStates(state) {
   const orchState = state.orchestrator?.state || "IDLE";
   const competitionStatus = state.status?.competitionStatus || "NOT_STARTED";
   const mode = getUiSystemMode(state);
-
   const isBusy = TRANSITIONING.has(orchState);
 
   const canStart =
@@ -660,10 +654,16 @@ function updateButtonStates(state) {
     (orchState === "IDLE" || orchState === "STOPPED");
 
   const canStop =
-    !isBusy && (orchState === "RUNNING" || competitionStatus === "ACTIVE");
+    !isBusy &&
+    orchState === "RUNNING" &&
+    competitionStatus === "ACTIVE";
 
   const canRestartBots =
-    !isBusy && orchState !== "IDLE" && competitionStatus !== "ACTIVE";
+    !isBusy &&
+    competitionStatus !== "ACTIVE" &&
+    (orchState === "RUNNING" ||
+      orchState === "STOPPED" ||
+      orchState === "ERROR");
 
   const canRestartApp =
     !isBusy &&
@@ -681,12 +681,18 @@ function updateButtonStates(state) {
   if (btnRestartApp) btnRestartApp.disabled = !canRestartApp;
 
   const hint = document.getElementById("ctrl-hint");
+
   if (hint) {
     if (mode === "MANUAL_ACTIVE") {
       hint.textContent =
-        "Competição ativa fora do orchestrator. A UI pode ver o estado, mas pode não controlar bots iniciados no terminal.";
+        "Competição ativa fora do orchestrator. A UI lê o estado, mas pode não controlar bots iniciados no terminal.";
     } else if (competitionStatus === "ACTIVE") {
       hint.textContent = "Competição em execução.";
+    } else if (competitionStatus === "ENDED" && orchState === "RUNNING") {
+      hint.textContent =
+        "Competição terminou. Aguardando sincronização do controlador.";
+    } else if (competitionStatus === "ENDED") {
+      hint.textContent = "Competição terminada. Podes reiniciar os bots.";
     } else {
       hint.textContent = "Pronto para iniciar.";
     }
@@ -699,22 +705,17 @@ function renderControlPanel(state) {
   updateButtonStates(state);
 }
 
-// ── API helpers ───────────────────────────────────────────────────────────────
-
 async function apiPost(path, body = {}) {
-  try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-    return json;
-  } catch (err) {
-    console.error(`[API] POST ${path} failed:`, err.message);
-    throw err;
-  }
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+
+  return json;
 }
 
 function getDuration() {
@@ -738,11 +739,9 @@ function withLoading(btn, fn) {
     });
 }
 
-// ── Button wiring ─────────────────────────────────────────────────────────────
-
 document.getElementById("btn-start-app")?.addEventListener("click", (e) => {
   withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/full-start", { duration: getDuration() }),
+    apiPost("/orchestrate/full-start", { duration: getDuration() })
   );
 });
 
@@ -752,22 +751,21 @@ document.getElementById("btn-stop-app")?.addEventListener("click", (e) => {
 
 document.getElementById("btn-restart-bots")?.addEventListener("click", (e) => {
   withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/restart-bots", { duration: getDuration() }),
+    apiPost("/orchestrate/restart-bots", { duration: getDuration() })
   );
 });
 
 document.getElementById("btn-restart-app")?.addEventListener("click", (e) => {
-  if (
-    !confirm(
-      "Restart the application? This will reset market balances and relaunch all bots.",
-    )
-  )
-    return;
+  const ok = confirm(
+    "Restart the application? This will reset market balances and relaunch all bots."
+  );
+
+  if (!ok) return;
+
   withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/restart-app", { duration: getDuration() }),
+    apiPost("/orchestrate/restart-app", { duration: getDuration() })
   );
 });
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
 initTfButtons();
 connectSSE();
