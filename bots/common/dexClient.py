@@ -1,7 +1,6 @@
 import os
 import time
 from typing import Dict, List, Any
-
 from dotenv import load_dotenv
 from web3 import Web3
 
@@ -10,53 +9,59 @@ from bots.common.config import CONFIG
 load_dotenv()
 
 _SLIPPAGE_PCT = CONFIG["slippage"]["max_price_impact_pct"]
-_RETRY_MAX    = CONFIG["retry"]["max_attempts"]
-_RETRY_DELAY  = CONFIG["retry"]["delay_seconds"]
+_RETRY_MAX = CONFIG["retry"]["max_attempts"]
+_RETRY_DELAY = CONFIG["retry"]["delay_seconds"]
 
 EXCHANGE_ABI = [
     {
         "inputs": [],
-        "name": "baseToken",
-        "outputs": [{"internalType": "contract IERC20", "name": "", "type": "address"}],
+        "name": "getTokens",
+        "outputs": [{"internalType": "address[]", "name": "", "type": "address[]"}],
         "stateMutability": "view",
-        "type": "function",
+        "type": "function"
     },
     {
         "inputs": [],
-        "name": "getProductTokens",
-        "outputs": [{"internalType": "address[]", "name": "", "type": "address[]"}],
+        "name": "getPoolIds",
+        "outputs": [{"internalType": "bytes32[]", "name": "", "type": "bytes32[]"}],
         "stateMutability": "view",
-        "type": "function",
+        "type": "function"
     },
     {
-        "inputs": [{"internalType": "address", "name": "productToken", "type": "address"}],
+        "inputs": [{"internalType": "bytes32", "name": "poolId", "type": "bytes32"}],
         "name": "getPool",
         "outputs": [
             {"internalType": "bool", "name": "exists", "type": "bool"},
-            {"internalType": "address", "name": "token", "type": "address"},
-            {"internalType": "uint256", "name": "reserveBase", "type": "uint256"},
-            {"internalType": "uint256", "name": "reserveProduct", "type": "uint256"},
+            {"internalType": "address", "name": "token0", "type": "address"},
+            {"internalType": "address", "name": "token1", "type": "address"},
+            {"internalType": "uint256", "name": "reserve0", "type": "uint256"},
+            {"internalType": "uint256", "name": "reserve1", "type": "uint256"}
         ],
         "stateMutability": "view",
-        "type": "function",
-    },
-    {
-        "inputs": [{"internalType": "address", "name": "productToken", "type": "address"}],
-        "name": "getSpotPrice",
-        "outputs": [{"internalType": "uint256", "name": "priceInBase", "type": "uint256"}],
-        "stateMutability": "view",
-        "type": "function",
+        "type": "function"
     },
     {
         "inputs": [
-            {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
-            {"internalType": "uint256", "name": "reserveIn", "type": "uint256"},
-            {"internalType": "uint256", "name": "reserveOut", "type": "uint256"},
+            {"internalType": "address", "name": "tokenIn", "type": "address"},
+            {"internalType": "address", "name": "tokenOut", "type": "address"},
+            {"internalType": "uint256", "name": "amountIn", "type": "uint256"}
         ],
-        "name": "getAmountOut",
+        "name": "quote",
         "outputs": [{"internalType": "uint256", "name": "amountOut", "type": "uint256"}],
-        "stateMutability": "pure",
-        "type": "function",
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "address", "name": "tokenIn", "type": "address"},
+            {"internalType": "address", "name": "tokenOut", "type": "address"},
+            {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
+            {"internalType": "uint256", "name": "minAmountOut", "type": "uint256"}
+        ],
+        "name": "swap",
+        "outputs": [{"internalType": "uint256", "name": "amountOut", "type": "uint256"}],
+        "stateMutability": "nonpayable",
+        "type": "function"
     },
     {
         "inputs": [],
@@ -64,33 +69,11 @@ EXCHANGE_ABI = [
         "outputs": [
             {"internalType": "uint8", "name": "status", "type": "uint8"},
             {"internalType": "uint256", "name": "startTime", "type": "uint256"},
-            {"internalType": "uint256", "name": "endTime", "type": "uint256"},
+            {"internalType": "uint256", "name": "endTime", "type": "uint256"}
         ],
         "stateMutability": "view",
-        "type": "function",
-    },
-    {
-        "inputs": [
-            {"internalType": "address", "name": "productToken", "type": "address"},
-            {"internalType": "uint256", "name": "baseAmountIn", "type": "uint256"},
-            {"internalType": "uint256", "name": "amountOutMin", "type": "uint256"},
-        ],
-        "name": "buy",
-        "outputs": [{"internalType": "uint256", "name": "productAmountOut", "type": "uint256"}],
-        "stateMutability": "nonpayable",
-        "type": "function",
-    },
-    {
-        "inputs": [
-            {"internalType": "address", "name": "productToken", "type": "address"},
-            {"internalType": "uint256", "name": "productAmountIn", "type": "uint256"},
-            {"internalType": "uint256", "name": "amountOutMin", "type": "uint256"},
-        ],
-        "name": "sell",
-        "outputs": [{"internalType": "uint256", "name": "baseAmountOut", "type": "uint256"}],
-        "stateMutability": "nonpayable",
-        "type": "function",
-    },
+        "type": "function"
+    }
 ]
 
 ERC20_ABI = [
@@ -99,50 +82,52 @@ ERC20_ABI = [
         "name": "balanceOf",
         "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
         "stateMutability": "view",
-        "type": "function",
+        "type": "function"
     },
     {
         "inputs": [],
         "name": "symbol",
         "outputs": [{"internalType": "string", "name": "", "type": "string"}],
         "stateMutability": "view",
-        "type": "function",
+        "type": "function"
     },
     {
         "inputs": [],
         "name": "decimals",
         "outputs": [{"internalType": "uint8", "name": "", "type": "uint8"}],
         "stateMutability": "view",
-        "type": "function",
+        "type": "function"
     },
     {
         "inputs": [
             {"internalType": "address", "name": "owner", "type": "address"},
-            {"internalType": "address", "name": "spender", "type": "address"},
+            {"internalType": "address", "name": "spender", "type": "address"}
         ],
         "name": "allowance",
         "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
         "stateMutability": "view",
-        "type": "function",
+        "type": "function"
     },
     {
         "inputs": [
             {"internalType": "address", "name": "spender", "type": "address"},
-            {"internalType": "uint256", "name": "amount", "type": "uint256"},
+            {"internalType": "uint256", "name": "amount", "type": "uint256"}
         ],
         "name": "approve",
         "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
         "stateMutability": "nonpayable",
-        "type": "function",
-    },
+        "type": "function"
+    }
 ]
 
 
 class DexClient:
     def __init__(self, private_key: str):
-        self.rpc_url = os.getenv("RPC_URL")
+        if not private_key:
+            raise RuntimeError("Private key ausente")
+
+        self.rpc_url = os.getenv("RPC_URL", "http://127.0.0.1:8545")
         self.exchange_address = Web3.to_checksum_address(os.getenv("EXCHANGE_ADDRESS"))
-        self.cash_address = Web3.to_checksum_address(os.getenv("CASH_ADDRESS"))
 
         self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
         if not self.w3.is_connected():
@@ -152,182 +137,198 @@ class DexClient:
         self.address = self.account.address
         self.private_key = private_key
 
-        self.exchange = self.w3.eth.contract(address=self.exchange_address, abi=EXCHANGE_ABI)
-        self.cash_token = self.w3.eth.contract(address=self.cash_address, abi=ERC20_ABI)
+        self.exchange = self.w3.eth.contract(
+            address=self.exchange_address,
+            abi=EXCHANGE_ABI
+        )
 
-        self.product_addresses = [
-            Web3.to_checksum_address(os.getenv(f"PROD{i}_ADDRESS")) for i in range(1, 6)
-        ]
+        self.tokens = {}
+        self.token_addresses = []
+        self._load_tokens()
 
-        self.product_tokens: Dict[str, Any] = {
-            addr: self.w3.eth.contract(address=addr, abi=ERC20_ABI)
-            for addr in self.product_addresses
-        }
-        self._decimals_cache: Dict[str, int] = {}
+    def _load_tokens(self):
+        addresses = self.exchange.functions.getTokens().call()
 
-    # ── Internal ──────────────────────────────────────────────────────────────
+        self.token_addresses = [Web3.to_checksum_address(a) for a in addresses]
 
-    def _get_decimals(self, token_contract) -> int:
-        addr = token_contract.address
-        if addr not in self._decimals_cache:
-            self._decimals_cache[addr] = token_contract.functions.decimals().call()
-        return self._decimals_cache[addr]
+        for address in self.token_addresses:
+            contract = self.w3.eth.contract(address=address, abi=ERC20_ABI)
+            symbol = contract.functions.symbol().call()
+            decimals = contract.functions.decimals().call()
+
+            self.tokens[address] = {
+                "address": address,
+                "contract": contract,
+                "symbol": symbol,
+                "decimals": decimals
+            }
 
     def _build_and_send(self, tx_function):
-        """Build, sign and send a transaction. Returns receipt."""
         nonce = self.w3.eth.get_transaction_count(self.address)
-        gas_price = self.w3.eth.gas_price
         tx = tx_function.build_transaction({
             "from": self.address,
             "nonce": nonce,
-            "gas": 500_000,
-            "gasPrice": gas_price,
+            "gas": 700_000,
+            "gasPrice": self.w3.eth.gas_price
         })
-        signed = self.w3.eth.account.sign_transaction(tx, private_key=self.private_key)
+
+        signed = self.w3.eth.account.sign_transaction(
+            tx,
+            private_key=self.private_key
+        )
+
         tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         return self.w3.eth.wait_for_transaction_receipt(tx_hash)
 
-    def _build_and_send_with_retry(self, tx_function):
-        """Retry transaction up to _RETRY_MAX times on failure."""
+    def _send_with_retry(self, tx_function):
+        last_error = None
+
         for attempt in range(1, _RETRY_MAX + 1):
             try:
                 return self._build_and_send(tx_function)
             except Exception as e:
-                if attempt == _RETRY_MAX:
-                    raise
-                print(f"[{self.address}] tx attempt {attempt} failed: {e}. Retrying...")
+                last_error = e
+                print(f"[{self.address}] tx attempt {attempt} failed: {e}", flush=True)
                 time.sleep(_RETRY_DELAY)
 
-    def _calc_amount_out_min(self, amount_in_wei: int, reserve_in_wei: int, reserve_out_wei: int) -> int:
-        """Calculate minimum acceptable output with slippage protection."""
-        expected = self.exchange.functions.getAmountOut(
-            amount_in_wei, reserve_in_wei, reserve_out_wei
-        ).call()
-        return int(expected * (1 - _SLIPPAGE_PCT / 100))
+        raise last_error
 
-    # ── Public ────────────────────────────────────────────────────────────────
-
-    def get_competition_status(self) -> Dict[str, int]:
+    def get_competition_status(self):
         status, start_time, end_time = self.exchange.functions.getCompetitionStatus().call()
-        return {"status": int(status), "start_time": int(start_time), "end_time": int(end_time)}
 
-    def wait_until_active(self, interval_seconds: int = 2):
-        """Block until competition is ACTIVE (status 1). Handles ENDED gracefully."""
+        return {
+            "status": int(status),
+            "start_time": int(start_time),
+            "end_time": int(end_time)
+        }
+
+    def wait_until_active(self, interval_seconds=2):
         while True:
             try:
                 data = self.get_competition_status()
+
                 if data["status"] == 1:
                     return
-                if data["status"] == 2:
-                    print(f"[{self.address}] competition ended — waiting for new one...", flush=True)
-                else:
-                    print(f"[{self.address}] waiting for competition to start...", flush=True)
+
+                print(f"[{self.address}] waiting for competition...", flush=True)
             except Exception as e:
-                print(f"[{self.address}] status check error: {e}", flush=True)
+                print(f"[{self.address}] status error: {e}", flush=True)
+
             time.sleep(interval_seconds)
 
-    def get_cash_balance(self) -> float:
-        raw = self.cash_token.functions.balanceOf(self.address).call()
-        return raw / (10 ** self._get_decimals(self.cash_token))
+    def get_symbol(self, token_address: str) -> str:
+        address = Web3.to_checksum_address(token_address)
+        return self.tokens[address]["symbol"]
 
-    def get_product_balance(self, product_address: str) -> float:
-        token = self.product_tokens[product_address]
-        raw = token.functions.balanceOf(self.address).call()
-        return raw / (10 ** self._get_decimals(token))
+    def get_balance(self, token_address: str) -> float:
+        address = Web3.to_checksum_address(token_address)
+        token = self.tokens[address]
+        raw = token["contract"].functions.balanceOf(self.address).call()
 
-    def get_all_product_balances(self) -> Dict[str, float]:
-        return {addr: self.get_product_balance(addr) for addr in self.product_addresses}
+        return raw / (10 ** token["decimals"])
 
-    def get_product_symbol(self, product_address: str) -> str:
-        return self.product_tokens[product_address].functions.symbol().call()
-
-    def get_pool(self, product_address: str) -> Dict[str, float]:
-        exists, _, reserve_base, reserve_product = self.exchange.functions.getPool(product_address).call()
-        if not exists:
-            return {
-                "exists": False,
-                "reserve_base": 0.0, "reserve_product": 0.0,
-                "reserve_base_wei": 0, "reserve_product_wei": 0,
-                "spot_price": 0.0,
-            }
-        price_raw = self.exchange.functions.getSpotPrice(product_address).call()
-        token = self.product_tokens[product_address]
-        decimals = self._get_decimals(token)
+    def get_all_balances(self) -> Dict[str, float]:
         return {
-            "exists": True,
-            "reserve_base": reserve_base / 1e18,
-            "reserve_product": reserve_product / (10 ** decimals),
-            "reserve_base_wei": reserve_base,
-            "reserve_product_wei": reserve_product,
-            "spot_price": price_raw / 1e18,
+            address: self.get_balance(address)
+            for address in self.token_addresses
+        }
+
+    def get_pool_ids(self):
+        return self.exchange.functions.getPoolIds().call()
+
+    def get_pool(self, pool_id) -> Dict[str, Any]:
+        exists, token0, token1, reserve0, reserve1 = self.exchange.functions.getPool(pool_id).call()
+
+        token0 = Web3.to_checksum_address(token0)
+        token1 = Web3.to_checksum_address(token1)
+
+        d0 = self.tokens[token0]["decimals"]
+        d1 = self.tokens[token1]["decimals"]
+
+        r0 = reserve0 / (10 ** d0)
+        r1 = reserve1 / (10 ** d1)
+
+        return {
+            "exists": exists,
+            "pool_id": pool_id,
+            "token0": token0,
+            "token1": token1,
+            "symbol0": self.tokens[token0]["symbol"],
+            "symbol1": self.tokens[token1]["symbol"],
+            "reserve0": r0,
+            "reserve1": r1,
+            "reserve0_wei": reserve0,
+            "reserve1_wei": reserve1,
+            "price01": r1 / r0 if r0 > 0 else 0,
+            "price10": r0 / r1 if r1 > 0 else 0,
+            "pair": f"{self.tokens[token0]['symbol']}/{self.tokens[token1]['symbol']}"
         }
 
     def get_all_pools(self) -> List[Dict[str, Any]]:
         pools = []
-        for addr in self.product_addresses:
-            pool = self.get_pool(addr)
-            if not pool["exists"]:
-                continue  # skip pools not yet created
-            pool["address"] = addr
-            pool["symbol"] = self.get_product_symbol(addr)
-            pools.append(pool)
+
+        for pool_id in self.get_pool_ids():
+            pool = self.get_pool(pool_id)
+
+            if pool["exists"]:
+                pools.append(pool)
+
         return pools
 
-    def ensure_approval(self, token_contract, spender: str, amount_wei: int):
-        current = token_contract.functions.allowance(self.address, spender).call()
-        if current >= amount_wei:
+    def ensure_approval(self, token_address: str, amount_wei: int):
+        token_address = Web3.to_checksum_address(token_address)
+        contract = self.tokens[token_address]["contract"]
+
+        allowance = contract.functions.allowance(
+            self.address,
+            self.exchange_address
+        ).call()
+
+        if allowance >= amount_wei:
             return
-        receipt = self._build_and_send_with_retry(
-            token_contract.functions.approve(spender, amount_wei)
-        )
-        print(f"[{self.address}] approve: {receipt.transactionHash.hex()}")
 
-    def buy(self, product_address: str, amount_in_base: float):
-        amount_wei = self.w3.to_wei(amount_in_base, "ether")
-        self.ensure_approval(self.cash_token, self.exchange_address, amount_wei)
-
-        # Slippage protection: get pool reserves and calculate min output
-        pool = self.get_pool(product_address)
-        if not pool["exists"] or pool["reserve_base_wei"] == 0:
-            raise ValueError(f"Pool does not exist or has zero reserves for {product_address}")
-        amount_out_min = self._calc_amount_out_min(
-            amount_wei,
-            pool["reserve_base_wei"],
-            pool["reserve_product_wei"],
+        receipt = self._send_with_retry(
+            contract.functions.approve(self.exchange_address, amount_wei * 2)
         )
 
-        receipt = self._build_and_send_with_retry(
-            self.exchange.functions.buy(product_address, amount_wei, amount_out_min)
+        print(f"[{self.address}] approve {self.get_symbol(token_address)}: {receipt.transactionHash.hex()}", flush=True)
+
+    def swap(self, token_in: str, token_out: str, amount_in: float):
+        token_in = Web3.to_checksum_address(token_in)
+        token_out = Web3.to_checksum_address(token_out)
+
+        if token_in == token_out:
+            raise ValueError("token_in e token_out iguais")
+
+        token = self.tokens[token_in]
+        amount_wei = int(amount_in * (10 ** token["decimals"]))
+
+        if amount_wei <= 0:
+            raise ValueError("amount_in invalido")
+
+        self.ensure_approval(token_in, amount_wei)
+
+        expected = self.exchange.functions.quote(
+            token_in,
+            token_out,
+            amount_wei
+        ).call()
+
+        amount_out_min = int(expected * (1 - _SLIPPAGE_PCT / 100))
+
+        receipt = self._send_with_retry(
+            self.exchange.functions.swap(
+                token_in,
+                token_out,
+                amount_wei,
+                amount_out_min
+            )
         )
+
         print(
-            f"[{self.address}] BUY {self.get_product_symbol(product_address)} | "
-            f"base_in={amount_in_base:.4f} | min_out={amount_out_min} | "
-            f"tx={receipt.transactionHash.hex()}"
-        )
-        return receipt
-
-    def sell(self, product_address: str, amount_in_product: float):
-        token = self.product_tokens[product_address]
-        decimals = self._get_decimals(token)
-        amount_wei = int(amount_in_product * (10 ** decimals))
-        self.ensure_approval(token, self.exchange_address, amount_wei)
-
-        # Slippage protection: swap reserves for sell direction
-        pool = self.get_pool(product_address)
-        if not pool["exists"] or pool["reserve_product_wei"] == 0:
-            raise ValueError(f"Pool does not exist or has zero reserves for {product_address}")
-        amount_out_min = self._calc_amount_out_min(
-            amount_wei,
-            pool["reserve_product_wei"],
-            pool["reserve_base_wei"],
+            f"[{self.address}] SWAP {amount_in:.4f} {self.get_symbol(token_in)} -> "
+            f"{self.get_symbol(token_out)} | tx={receipt.transactionHash.hex()}",
+            flush=True
         )
 
-        receipt = self._build_and_send_with_retry(
-            self.exchange.functions.sell(product_address, amount_wei, amount_out_min)
-        )
-        print(
-            f"[{self.address}] SELL {self.get_product_symbol(product_address)} | "
-            f"product_in={amount_in_product:.4f} | min_out={amount_out_min} | "
-            f"tx={receipt.transactionHash.hex()}"
-        )
         return receipt

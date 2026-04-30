@@ -65,27 +65,28 @@
 </section>
 
       <!-- ── Metrics ────────────────────────────────────────────────────── -->
-      <section class="metrics">
-        <div class="metric">
-          <span>Total Trades</span>
-          <strong id="total-trades">--</strong>
-        </div>
+      <!-- Metrics -->
+<section class="metrics">
+  <div class="metric">
+    <span>Total Swaps</span>
+    <strong id="total-trades">--</strong>
+  </div>
 
-        <div class="metric">
-          <span>Active Bots</span>
-          <strong id="active-bots">--</strong>
-        </div>
+  <div class="metric">
+    <span>Active Bots</span>
+    <strong id="active-bots">--</strong>
+  </div>
 
-        <div class="metric">
-          <span>Markets</span>
-          <strong id="total-markets">--</strong>
-        </div>
+  <div class="metric">
+    <span>Pools</span>
+    <strong id="total-markets">--</strong>
+  </div>
 
-        <div class="metric">
-          <span>Volume</span>
-          <strong id="total-volume">-- CASH</strong>
-        </div>
-      </section>
+  <div class="metric">
+    <span>Reference</span>
+    <strong id="total-volume">--</strong>
+  </div>
+</section>
 
       <!-- ── Main layout: Markets / Leaderboard / Trades ───────────────── -->
       <main class="layout">
@@ -114,17 +115,22 @@
           <div class="table-wrapper">
             <table>
               <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Bot</th>
-                  <th>Total Value</th>
-                  <th>PnL</th>
-                  <th>Ops</th>
-                </tr>
-              </thead>
+  <tr>
+    <th>#</th>
+    <th>Bot</th>
+    <th>TKN1</th>
+    <th>TKN2</th>
+    <th>TKN3</th>
+    <th>TKN4</th>
+    <th>TKN5</th>
+    <th>Value Ref.</th>
+    <th>PnL</th>
+    <th>Ops</th>
+  </tr>
+</thead>
               <tbody id="ranking-body">
                 <tr>
-                  <td colspan="5" class="empty">A carregar ranking...</td>
+                  <td colspan="10" class="empty">A carregar ranking...</td>
                 </tr>
               </tbody>
             </table>

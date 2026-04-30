@@ -7,12 +7,12 @@ from bots.common.config import CONFIG
 from bots.common.human_behavior import HumanBehavior
 
 load_dotenv()
-_CFG = CONFIG["trend"]
+_CFG = CONFIG["mean_reversion"]
 
 
-class TrendBot(BaseBot, HumanBehavior):
+class MeanReversionBot(BaseBot, HumanBehavior):
     def __init__(self, private_key: str, name: str):
-        BaseBot.__init__(self, private_key, name, interval_key="trend")
+        BaseBot.__init__(self, private_key, name, interval_key="mean_reversion")
         HumanBehavior.__init__(self)
         self.last_prices = {}
 
@@ -39,20 +39,20 @@ class TrendBot(BaseBot, HumanBehavior):
                 continue
 
             if change > 0:
-                token_in = pool["token1"]
-                token_out = pool["token0"]
-                symbol_in = pool["symbol1"]
-                symbol_out = pool["symbol0"]
-                direction = "alta"
-            else:
                 token_in = pool["token0"]
                 token_out = pool["token1"]
                 symbol_in = pool["symbol0"]
                 symbol_out = pool["symbol1"]
-                direction = "baixa"
+                action = "vendeu ativo esticado"
+            else:
+                token_in = pool["token1"]
+                token_out = pool["token0"]
+                symbol_in = pool["symbol1"]
+                symbol_out = pool["symbol0"]
+                action = "comprou ativo descontado"
 
             if self.should_ignore_signal():
-                self.log(f"ignorou tendencia de {direction} em {pool['pair']} | mood={self.mood}")
+                self.log(f"ignorou reversao em {pool['pair']} | mood={self.mood}")
                 return
 
             amount = self.amount_from_balance(
@@ -63,22 +63,22 @@ class TrendBot(BaseBot, HumanBehavior):
             )
 
             if amount is None:
-                self.log(f"saldo insuficiente para seguir tendencia {symbol_in}->{symbol_out}")
+                self.log(f"saldo insuficiente para reversao {symbol_in}->{symbol_out}")
                 return
 
             self.swap(token_in, token_out, amount)
 
             self.log(
-                f"TREND {direction.upper()} {pool['pair']} | "
+                f"MEAN REVERSION {pool['pair']} | {action} | "
                 f"{amount} {symbol_in} -> {symbol_out} | change={change:+.2%} | mood={self.mood}"
             )
             return
 
-        self.log(f"sem sinal de tendencia | mood={self.mood}")
+        self.log(f"sem sinal de reversao | mood={self.mood}")
 
 
 if __name__ == "__main__":
-    TrendBot(
-        private_key=os.getenv("BOT_TREND_PK"),
-        name="TrendBot"
+    MeanReversionBot(
+        private_key=os.getenv("BOT_MEAN_REVERSION_PK"),
+        name="MeanReversionBot"
     ).run()

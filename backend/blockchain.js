@@ -1,10 +1,10 @@
 import { ethers } from "ethers";
 
 import {
-  setBaseToken,
   setCompetitionStatus,
   setTraders,
-  setProducts,
+  setTokens,
+  setReferenceToken,
   upsertPool,
   addTrade,
   setRanking,
@@ -14,18 +14,17 @@ import {
 import { formatUnitsSafe, calculateRanking } from "./ranking.js";
 
 const EXCHANGE_ABI = [
-  "function baseToken() view returns (address)",
-  "function getProductTokens() view returns (address[] memory)",
-  "function getPool(address productToken) view returns (bool exists, address token, uint256 reserveBase, uint256 reserveProduct)",
-  "function getSpotPrice(address productToken) view returns (uint256 priceInBase)",
+  "function getTokens() view returns (address[] memory)",
+  "function getPoolIds() view returns (bytes32[] memory)",
+  "function getPool(bytes32 poolId) view returns (bool exists, address token0, address token1, uint256 reserve0, uint256 reserve1)",
+  "function getPoolByTokens(address tokenA, address tokenB) view returns (bool exists, bytes32 poolId, address token0, address token1, uint256 reserve0, uint256 reserve1)",
+  "function quote(address tokenIn, address tokenOut, uint256 amountIn) view returns (uint256 amountOut)",
   "function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut) pure returns (uint256)",
   "function getCompetitionStatus() view returns (uint8 status, uint256 startTime, uint256 endTime)",
   "function startCompetition(uint256 durationSeconds) external",
   "function endCompetition() external",
-  "function traderCount() view returns (uint256)",
   "function isTrader(address) view returns (bool)",
-  "event Bought(address indexed trader, address indexed productToken, uint256 baseAmountIn, uint256 productAmountOut, uint256 newReserveBase, uint256 newReserveProduct)",
-  "event Sold(address indexed trader, address indexed productToken, uint256 productAmountIn, uint256 baseAmountOut, uint256 newReserveBase, uint256 newReserveProduct)",
+  "event Swapped(address indexed trader, bytes32 indexed poolId, address indexed tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut, uint256 newReserveIn, uint256 newReserveOut)",
   "event CompetitionStarted(uint256 indexed startTime, uint256 indexed endTime, uint256 durationSeconds)",
   "event CompetitionEnded(uint256 indexed endTime)",
 ];
@@ -38,82 +37,77 @@ const TOKEN_ABI = [
   "function allowance(address owner, address spender) view returns (uint256)",
 ];
 
-// ── Module-level state ────────────────────────────────────────────────────────
+let provider = null;
+let exchange = null;
+let tokenContracts = {};
+let trackedTraders = [];
+let traderMetaMap = {};
+let refreshLock = false;
 
-let provider        = null;
-let exchange        = null;
-let baseToken       = null;
-let productContracts = {};
-let trackedTraders  = [];
-let traderMetaMap   = {};
-let refreshLock     = false;
-
-// ── Balance cache — avoids fetching all 40 balances on every trade ────────────
 const balanceCache = {};
 
-function ensureTraderCache(traderKey) {
-  if (!balanceCache[traderKey]) {
-    balanceCache[traderKey] = { base: 0, products: {} };
-  }
+function norm(address) {
+  return String(address || "").toLowerCase();
 }
-
-// ── Exports for orchestrator / server ────────────────────────────────────────
-
-/** Returns the current ethers provider (may be null before initBlockchain). */
-export function getProvider() { return provider; }
-
-/** Returns the current exchange contract instance (may be null before initBlockchain). */
-export function getExchange() { return exchange; }
-
-// ── Shutdown / reinit ─────────────────────────────────────────────────────────
-
-/**
- * Removes all event listeners and destroys the provider.
- * Call before reinitialising after a fresh deployment.
- */
-export function shutdownBlockchain() {
-  if (exchange) {
-    try { exchange.removeAllListeners(); } catch {}
-  }
-  if (provider) {
-    try { provider.destroy(); } catch {}
-  }
-  provider        = null;
-  exchange        = null;
-  baseToken       = null;
-  productContracts = {};
-  // Clear the balance cache — contract addresses changed after redeploy
-  for (const k of Object.keys(balanceCache)) delete balanceCache[k];
-}
-
-/**
- * Shutdown + re-init with the (potentially updated) addresses in process.env.
- * Used by the orchestrator after deploying new contracts.
- */
-export async function reinitBlockchain() {
-  shutdownBlockchain();
-  await initBlockchain();
-  await refreshAll();
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function mapCompetitionStatus(n) {
   return n === 0 ? "NOT_STARTED" : n === 1 ? "ACTIVE" : n === 2 ? "ENDED" : "UNKNOWN";
 }
 
 function getTokenContract(address) {
-  const key = address.toLowerCase();
-  if (!productContracts[key]) {
-    productContracts[key] = new ethers.Contract(address, TOKEN_ABI, provider);
+  const key = norm(address);
+
+  if (!tokenContracts[key]) {
+    tokenContracts[key] = new ethers.Contract(address, TOKEN_ABI, provider);
   }
-  return productContracts[key];
+
+  return tokenContracts[key];
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+function ensureTraderCache(traderKey) {
+  if (!balanceCache[traderKey]) {
+    balanceCache[traderKey] = { tokens: {} };
+  }
+}
+
+export function getProvider() {
+  return provider;
+}
+
+export function getExchange() {
+  return exchange;
+}
+
+export function shutdownBlockchain() {
+  if (exchange) {
+    try {
+      exchange.removeAllListeners();
+    } catch {}
+  }
+
+  if (provider) {
+    try {
+      provider.destroy();
+    } catch {}
+  }
+
+  provider = null;
+  exchange = null;
+  tokenContracts = {};
+
+  for (const key of Object.keys(balanceCache)) {
+    delete balanceCache[key];
+  }
+}
+
+export async function reinitBlockchain() {
+  shutdownBlockchain();
+  await initBlockchain();
+  await refreshAll();
+}
 
 export async function initBlockchain() {
-  provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+  provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:8545");
 
   exchange = new ethers.Contract(
     process.env.EXCHANGE_ADDRESS,
@@ -121,241 +115,235 @@ export async function initBlockchain() {
     provider
   );
 
-  const baseTokenAddress = await exchange.baseToken();
-  baseToken = new ethers.Contract(baseTokenAddress, TOKEN_ABI, provider);
-
-  const baseSymbol  = await baseToken.symbol();
-  const baseDecimals = await baseToken.decimals();
-  setBaseToken(baseTokenAddress, baseSymbol, Number(baseDecimals));
-
   setTraders(
     trackedTraders.map((address) => ({
       address,
-      name: traderMetaMap[address.toLowerCase()]?.name || address,
+      name: traderMetaMap[norm(address)]?.name || address,
     }))
   );
 
   await refreshCompetitionStatus();
-  await refreshProductsAndPools();
+  await refreshTokens();
+  await refreshPools();
   await refreshAllBalances();
+
+  const state = getState();
+  const refSymbol = process.env.REFERENCE_TOKEN_SYMBOL || "TKN1";
+  const refToken = state.tokens.find((t) => t.symbol === refSymbol) || state.tokens[0];
+
+  if (refToken) {
+    setReferenceToken({
+      address: refToken.address,
+      symbol: refToken.symbol,
+    });
+  }
 
   registerEventListeners();
 
-  return { provider, exchange, baseToken };
+  return { provider, exchange };
 }
-
-// ── Blockchain reads ──────────────────────────────────────────────────────────
 
 async function refreshCompetitionStatus() {
   const [statusRaw, startTimeRaw, endTimeRaw] =
     await exchange.getCompetitionStatus();
 
   setCompetitionStatus({
-    competitionStatus:    mapCompetitionStatus(Number(statusRaw)),
+    competitionStatus: mapCompetitionStatus(Number(statusRaw)),
     competitionStartTime: Number(startTimeRaw),
-    competitionEndTime:   Number(endTimeRaw),
+    competitionEndTime: Number(endTimeRaw),
   });
 }
 
-async function refreshProductsAndPools() {
-  const productAddresses = await exchange.getProductTokens();
-  const products = [];
+async function refreshTokens() {
+  const tokenAddresses = await exchange.getTokens();
+  const tokens = [];
 
-  for (const productAddress of productAddresses) {
-    const tc       = getTokenContract(productAddress);
-    const symbol   = await tc.symbol();
+  for (const address of tokenAddresses) {
+    const tc = getTokenContract(address);
+    const symbol = await tc.symbol();
     const decimals = Number(await tc.decimals());
-    const pool     = await exchange.getPool(productAddress);
-    const priceRaw = await exchange.getSpotPrice(productAddress);
 
-    const reserveBase    = formatUnitsSafe(pool.reserveBase,    18);
-    const reserveProduct = formatUnitsSafe(pool.reserveProduct, decimals);
-    const spotPrice      = formatUnitsSafe(priceRaw, 18);
-
-    const productData = { address: productAddress, symbol, decimals };
-    products.push(productData);
-
-    upsertPool(productAddress, { product: productData, reserveBase, reserveProduct, spotPrice });
+    tokens.push({
+      address,
+      symbol,
+      decimals,
+    });
   }
 
-  setProducts(products);
+  setTokens(tokens);
 }
 
-// Full balance refresh (48 calls) — only at startup & periodic fallback.
+async function refreshPools() {
+  const poolIds = await exchange.getPoolIds();
+  const state = getState();
+
+  for (const poolId of poolIds) {
+    const [exists, token0, token1, reserve0Raw, reserve1Raw] =
+      await exchange.getPool(poolId);
+
+    if (!exists) continue;
+
+    const t0 = state.tokens.find((t) => norm(t.address) === norm(token0));
+    const t1 = state.tokens.find((t) => norm(t.address) === norm(token1));
+
+    const reserve0 = formatUnitsSafe(reserve0Raw, t0?.decimals ?? 18);
+    const reserve1 = formatUnitsSafe(reserve1Raw, t1?.decimals ?? 18);
+
+    upsertPool(poolId, {
+      poolId,
+      exists: true,
+      token0,
+      token1,
+      symbol0: t0?.symbol || shortToken(token0),
+      symbol1: t1?.symbol || shortToken(token1),
+      reserve0,
+      reserve1,
+      pair: `${t0?.symbol || "T0"}/${t1?.symbol || "T1"}`,
+    });
+  }
+}
+
+function shortToken(address) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 async function refreshAllBalances() {
   const state = getState();
 
   for (const trader of trackedTraders) {
-    const traderKey = trader.toLowerCase();
+    const traderKey = norm(trader);
     ensureTraderCache(traderKey);
 
-    const baseRaw = await baseToken.balanceOf(trader);
-    balanceCache[traderKey].base = formatUnitsSafe(baseRaw, 18);
-
-    for (const product of state.products) {
-      const productKey = product.address.toLowerCase();
-      try {
-        const tc  = getTokenContract(product.address);
-        const raw = await tc.balanceOf(trader);
-        balanceCache[traderKey].products[productKey] = formatUnitsSafe(raw, product.decimals);
-      } catch {
-        balanceCache[traderKey].products[productKey] = 0;
-      }
+    for (const token of state.tokens) {
+      const tc = getTokenContract(token.address);
+      const raw = await tc.balanceOf(trader);
+      balanceCache[traderKey].tokens[norm(token.address)] =
+        formatUnitsSafe(raw, token.decimals);
     }
   }
 }
 
-// Targeted update for one trader after a trade — only 2 RPC calls.
-async function refreshTraderBalances(traderAddress, productAddress) {
-  const traderKey  = traderAddress.toLowerCase();
-  const productKey = productAddress.toLowerCase();
-  const state      = getState();
-
+async function refreshTraderBalances(traderAddress) {
+  const state = getState();
+  const traderKey = norm(traderAddress);
   ensureTraderCache(traderKey);
 
-  const baseRaw = await baseToken.balanceOf(traderAddress);
-  balanceCache[traderKey].base = formatUnitsSafe(baseRaw, 18);
-
-  const product = state.products.find((p) => p.address.toLowerCase() === productKey);
-  if (product) {
-    const tc  = getTokenContract(productAddress);
+  for (const token of state.tokens) {
+    const tc = getTokenContract(token.address);
     const raw = await tc.balanceOf(traderAddress);
-    balanceCache[traderKey].products[productKey] = formatUnitsSafe(raw, product.decimals);
+    balanceCache[traderKey].tokens[norm(token.address)] =
+      formatUnitsSafe(raw, token.decimals);
   }
 }
 
-// Pure in-memory ranking — 0 RPC calls.
 function computeRanking() {
   const state = getState();
-  const baseBalances          = {};
-  const productBalancesByTrader = {};
+  const tokenBalancesByTrader = {};
 
   for (const trader of trackedTraders) {
-    const traderKey = trader.toLowerCase();
-    const cache     = balanceCache[traderKey] || { base: 0, products: {} };
-    baseBalances[traderKey]              = cache.base;
-    productBalancesByTrader[traderKey]   = { ...cache.products };
+    const traderKey = norm(trader);
+    const cache = balanceCache[traderKey] || { tokens: {} };
+    tokenBalancesByTrader[traderKey] = { ...cache.tokens };
   }
 
-  const initialBaseBalance = Number(process.env.INITIAL_BASE_BALANCE || "1000");
+  const initialReferenceValue = Number(
+    process.env.INITIAL_REFERENCE_VALUE || "5000"
+  );
 
   const ranking = calculateRanking({
-    traders:                trackedTraders,
-    baseBalances,
-    productBalancesByTrader,
-    poolsByProduct:         state.pools,
-    initialBaseBalance,
+    traders: trackedTraders,
+    tokenBalancesByTrader,
+    pools: state.pools,
+    referenceToken: state.referenceToken.address,
+    initialReferenceValue,
   }).map((item) => ({
     ...item,
-    name: traderMetaMap[item.trader.toLowerCase()]?.name || item.trader,
+    name: traderMetaMap[norm(item.trader)]?.name || item.trader,
   }));
 
   setRanking(ranking);
   return ranking;
 }
 
-// ── Event listeners ───────────────────────────────────────────────────────────
-
 function registerEventListeners() {
   exchange.on(
-    "Bought",
-    async (trader, productToken, baseAmountIn, productAmountOut, newReserveBase, newReserveProduct) => {
+    "Swapped",
+    async (
+      trader,
+      poolId,
+      tokenIn,
+      tokenOut,
+      amountInRaw,
+      amountOutRaw,
+      newReserveInRaw,
+      newReserveOutRaw
+    ) => {
       try {
-        const tc       = getTokenContract(productToken);
-        const symbol   = await tc.symbol();
-        const decimals = Number(await tc.decimals());
+        const state = getState();
+
+        const inToken = state.tokens.find((t) => norm(t.address) === norm(tokenIn));
+        const outToken = state.tokens.find((t) => norm(t.address) === norm(tokenOut));
+
+        const amountIn = formatUnitsSafe(amountInRaw, inToken?.decimals ?? 18);
+        const amountOut = formatUnitsSafe(amountOutRaw, outToken?.decimals ?? 18);
+
+        const pool = state.pools[String(poolId).toLowerCase()];
+
+        if (pool) {
+          const reserveIn = formatUnitsSafe(newReserveInRaw, inToken?.decimals ?? 18);
+          const reserveOut = formatUnitsSafe(newReserveOutRaw, outToken?.decimals ?? 18);
+
+          const isToken0In = norm(tokenIn) === norm(pool.token0);
+
+          upsertPool(poolId, {
+            ...pool,
+            reserve0: isToken0In ? reserveIn : reserveOut,
+            reserve1: isToken0In ? reserveOut : reserveIn,
+          });
+        } else {
+          await refreshPools();
+        }
 
         addTrade({
-          type:         "BUY",
+          type: "SWAP",
           trader,
-          traderName:   traderMetaMap[trader.toLowerCase()]?.name || trader,
-          productToken,
-          productSymbol: symbol,
-          amountIn:     formatUnitsSafe(baseAmountIn,    18),
-          amountOut:    formatUnitsSafe(productAmountOut, decimals),
-          timestamp:    Date.now(),
+          traderName: traderMetaMap[norm(trader)]?.name || trader,
+          poolId,
+          tokenIn,
+          tokenOut,
+          tokenInSymbol: inToken?.symbol || shortToken(tokenIn),
+          tokenOutSymbol: outToken?.symbol || shortToken(tokenOut),
+          amountIn,
+          amountOut,
+          timestamp: Date.now(),
         });
 
-        const rProd = formatUnitsSafe(newReserveProduct, decimals);
-        const rBase = formatUnitsSafe(newReserveBase,    18);
-
-        upsertPool(productToken, {
-          reserveBase:    rBase,
-          reserveProduct: rProd,
-          spotPrice:      rProd > 0 ? rBase / rProd : 0,
-        });
-
-        await refreshTraderBalances(trader, productToken);
+        await refreshTraderBalances(trader);
         computeRanking();
       } catch (err) {
-        console.error("Bought event error:", err.message);
-      }
-    }
-  );
-
-  exchange.on(
-    "Sold",
-    async (trader, productToken, productAmountIn, baseAmountOut, newReserveBase, newReserveProduct) => {
-      try {
-        const tc       = getTokenContract(productToken);
-        const symbol   = await tc.symbol();
-        const decimals = Number(await tc.decimals());
-
-        addTrade({
-          type:         "SELL",
-          trader,
-          traderName:   traderMetaMap[trader.toLowerCase()]?.name || trader,
-          productToken,
-          productSymbol: symbol,
-          amountIn:     formatUnitsSafe(productAmountIn, decimals),
-          amountOut:    formatUnitsSafe(baseAmountOut,   18),
-          timestamp:    Date.now(),
-        });
-
-        const rProd = formatUnitsSafe(newReserveProduct, decimals);
-        const rBase = formatUnitsSafe(newReserveBase,    18);
-
-        upsertPool(productToken, {
-          reserveBase:    rBase,
-          reserveProduct: rProd,
-          spotPrice:      rProd > 0 ? rBase / rProd : 0,
-        });
-
-        await refreshTraderBalances(trader, productToken);
-        computeRanking();
-      } catch (err) {
-        console.error("Sold event error:", err.message);
+        console.error("Swapped event error:", err.message);
       }
     }
   );
 
   exchange.on("CompetitionStarted", async (startTime, endTime) => {
-    try {
-      setCompetitionStatus({
-        competitionStatus:    "ACTIVE",
-        competitionStartTime: Number(startTime),
-        competitionEndTime:   Number(endTime),
-      });
-    } catch (err) {
-      console.error("CompetitionStarted handler error:", err.message);
-    }
+    setCompetitionStatus({
+      competitionStatus: "ACTIVE",
+      competitionStartTime: Number(startTime),
+      competitionEndTime: Number(endTime),
+    });
   });
 
   exchange.on("CompetitionEnded", async (endTime) => {
-    try {
-      setCompetitionStatus({
-        competitionStatus:  "ENDED",
-        competitionEndTime: Number(endTime),
-      });
-      await refreshAllBalances();
-      computeRanking();
-    } catch (err) {
-      console.error("CompetitionEnded handler error:", err.message);
-    }
+    setCompetitionStatus({
+      competitionStatus: "ENDED",
+      competitionEndTime: Number(endTime),
+    });
+
+    await refreshAllBalances();
+    computeRanking();
   });
 }
-
-// ── Exports ───────────────────────────────────────────────────────────────────
 
 export function setTrackedTraders(traders) {
   trackedTraders = traders;
@@ -363,18 +351,25 @@ export function setTrackedTraders(traders) {
 
 export function setTraderMeta(traders) {
   traderMetaMap = {};
+
   for (const t of traders) {
-    traderMetaMap[t.address.toLowerCase()] = { name: t.name };
+    traderMetaMap[norm(t.address)] = {
+      name: t.name,
+    };
   }
+
   setTraders(traders);
 }
 
 export async function refreshAll() {
   if (refreshLock) return;
+
   refreshLock = true;
+
   try {
     await refreshCompetitionStatus();
-    await refreshProductsAndPools();
+    await refreshTokens();
+    await refreshPools();
     await refreshAllBalances();
     computeRanking();
   } finally {
@@ -382,144 +377,99 @@ export async function refreshAll() {
   }
 }
 
-// ── On-chain competition control ──────────────────────────────────────────────
-
 export async function startCompetitionOnChain(durationSeconds = 300) {
-  const pk = process.env.DEPLOYER_PK ||
+  const pk =
+    process.env.DEPLOYER_PK ||
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
   const signer = new ethers.Wallet(pk, provider);
-  const ex     = exchange.connect(signer);
-  const tx     = await ex.startCompetition(BigInt(durationSeconds));
+  const ex = exchange.connect(signer);
+
+  const tx = await ex.startCompetition(BigInt(durationSeconds));
   await tx.wait();
 }
 
 export async function endCompetitionOnChain() {
-  const pk = process.env.DEPLOYER_PK ||
+  const pk =
+    process.env.DEPLOYER_PK ||
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
   const signer = new ethers.Wallet(pk, provider);
-  const ex     = exchange.connect(signer);
-  const tx     = await ex.endCompetition();
+  const ex = exchange.connect(signer);
+
+  const tx = await ex.endCompetition();
   await tx.wait();
 }
 
-// ── External bot utilities ────────────────────────────────────────────────────
-
-/** Derive a checksum address from a private key without needing a provider. */
 export function deriveAddress(pk) {
   return new ethers.Wallet(pk).address;
 }
 
-/**
- * Add an external bot's address to the tracked-traders list so the ranking
- * and balance refresh includes it. Safe to call multiple times (idempotent).
- */
-export function addTrackedTrader(address, name) {
-  const norm = address.toLowerCase();
-  if (trackedTraders.some((a) => a.toLowerCase() === norm)) return;
-  trackedTraders.push(address);
-  traderMetaMap[norm] = { name };
+export async function executeSwapFor(pk, tokenIn, tokenOut, amountIn) {
+  if (!provider || !exchange) {
+    throw new Error("Blockchain not initialised");
+  }
+
   const state = getState();
-  const already = state.traders.find((t) => t.address.toLowerCase() === norm);
-  if (!already) setTraders([...state.traders, { address, name }]);
-}
 
-/**
- * Ensure the token contract held by `signer` has enough allowance for `spender`.
- * Doubles the required amount on approval to reduce future round-trips.
- */
-async function _ensureAllowance(tokenContract, signer, spender, amountWei) {
-  const signed    = tokenContract.connect(signer);
-  const allowance = await signed.allowance(signer.address, spender);
-  if (allowance >= amountWei) return;
-  const appTx = await signed.approve(spender, amountWei * 2n);
-  await appTx.wait();
-}
+  const inToken = state.tokens.find((t) => norm(t.address) === norm(tokenIn));
+  if (!inToken) throw new Error("Unknown tokenIn");
 
-/**
- * Execute a BUY on behalf of an external bot using its private key.
- * The server holds the PK and signs the transaction server-side.
- */
-export async function executeBuyFor(pk, productAddress, amountInBase) {
-  if (!provider || !exchange) throw new Error("Blockchain not initialised — start the node first");
-
-  const signer    = new ethers.Wallet(pk, provider);
-  const exSigned  = exchange.connect(signer);
-  const amountWei = ethers.parseEther(String(amountInBase));
-
-  const cashContract = new ethers.Contract(baseToken.target, TOKEN_ABI, provider);
-  await _ensureAllowance(cashContract, signer, exchange.target, amountWei);
-
-  const pool = await exchange.getPool(productAddress);
-  if (!pool.exists) throw new Error(`Pool does not exist for ${productAddress}`);
-
-  const expected   = await exchange.getAmountOut(amountWei, pool.reserveBase, pool.reserveProduct);
-  const outMin     = expected * 95n / 100n; // 5 % slippage tolerance
-
-  const tx      = await exSigned.buy(productAddress, amountWei, outMin);
-  const receipt = await tx.wait();
-
-  console.log(
-    `[ExtBot] BUY | from=${signer.address} | cash=${amountInBase} | ` +
-    `product=${productAddress} | tx=${receipt.hash}`
-  );
-  return { txHash: receipt.hash };
-}
-
-/**
- * Execute a SELL on behalf of an external bot using its private key.
- */
-export async function executeSellFor(pk, productAddress, amountInProduct) {
-  if (!provider || !exchange) throw new Error("Blockchain not initialised — start the node first");
-
-  const signer   = new ethers.Wallet(pk, provider);
+  const signer = new ethers.Wallet(pk, provider);
   const exSigned = exchange.connect(signer);
 
-  const state    = getState();
-  const product  = state.products.find(
-    (p) => p.address.toLowerCase() === productAddress.toLowerCase()
-  );
-  const decimals = product?.decimals ?? 18;
-  const amountWei = ethers.parseUnits(String(amountInProduct), decimals);
+  const amountWei = ethers.parseUnits(String(amountIn), inToken.decimals);
 
-  const productContract = new ethers.Contract(productAddress, TOKEN_ABI, provider);
-  await _ensureAllowance(productContract, signer, exchange.target, amountWei);
+  const tokenContract = new ethers.Contract(tokenIn, TOKEN_ABI, provider);
+  const signedToken = tokenContract.connect(signer);
 
-  const pool = await exchange.getPool(productAddress);
-  if (!pool.exists) throw new Error(`Pool does not exist for ${productAddress}`);
+  const allowance = await signedToken.allowance(signer.address, exchange.target);
 
-  const expected = await exchange.getAmountOut(amountWei, pool.reserveProduct, pool.reserveBase);
-  const outMin   = expected * 95n / 100n;
+  if (allowance < amountWei) {
+    const approveTx = await signedToken.approve(exchange.target, amountWei * 2n);
+    await approveTx.wait();
+  }
 
-  const tx      = await exSigned.sell(productAddress, amountWei, outMin);
+  const expected = await exchange.quote(tokenIn, tokenOut, amountWei);
+  const outMin = (expected * 95n) / 100n;
+
+  const tx = await exSigned.swap(tokenIn, tokenOut, amountWei, outMin);
   const receipt = await tx.wait();
 
-  console.log(
-    `[ExtBot] SELL | from=${signer.address} | product=${amountInProduct} | ` +
-    `product=${productAddress} | tx=${receipt.hash}`
-  );
   return { txHash: receipt.hash };
 }
 
-/**
- * Return cash + all product token balances for an external bot's address.
- */
 export async function getBalanceFor(address) {
-  if (!provider || !baseToken) throw new Error("Blockchain not initialised");
+  if (!provider) throw new Error("Blockchain not initialised");
 
-  const cashRaw = await baseToken.balanceOf(address);
-  const cash    = formatUnitsSafe(cashRaw, 18);
+  const state = getState();
+  const balances = {};
 
-  const state    = getState();
-  const products = {};
-
-  for (const product of state.products) {
-    const tc  = getTokenContract(product.address);
+  for (const token of state.tokens) {
+    const tc = getTokenContract(token.address);
     const raw = await tc.balanceOf(address);
-    products[product.address] = {
-      symbol:  product.symbol,
-      balance: formatUnitsSafe(raw, product.decimals),
+
+    balances[token.address] = {
+      symbol: token.symbol,
+      balance: formatUnitsSafe(raw, token.decimals),
     };
   }
 
-  return { cash, products };
+  return { balances };
+}
+
+export function addTrackedTrader(address, name) {
+  const normalized = norm(address);
+
+  if (trackedTraders.some((a) => norm(a) === normalized)) return;
+
+  trackedTraders.push(address);
+  traderMetaMap[normalized] = { name };
+
+  const state = getState();
+  const already = state.traders.find((t) => norm(t.address) === normalized);
+
+  if (!already) {
+    setTraders([...state.traders, { address, name }]);
+  }
 }

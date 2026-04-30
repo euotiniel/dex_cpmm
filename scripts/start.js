@@ -2,23 +2,16 @@ import hre from "hardhat";
 import "dotenv/config";
 
 async function main() {
-  // Read duration from env var (set DURATION=300 in .env or prefix the command)
-  const duration = parseInt(process.env.DURATION || "300");
+  const duration = parseInt(process.env.DURATION || "300", 10);
 
-  if (!duration || duration <= 0) throw new Error("Invalid duration. Set DURATION=<seconds> in .env or as env var");
-
-  const exchangeAddress = process.env.EXCHANGE_ADDRESS;
-
-  if (!exchangeAddress) throw new Error("Missing EXCHANGE_ADDRESS in .env");
+  if (!duration || duration <= 0) {
+    throw new Error("Invalid duration. Use DURATION=<seconds>");
+  }
 
   const exchange = await hre.ethers.getContractAt(
     "CPMMExchange",
-    exchangeAddress
+    process.env.EXCHANGE_ADDRESS
   );
-
-  console.log("=================================");
-  console.log("Starting Competition...");
-  console.log("Duration:", duration, "seconds");
 
   const tx = await exchange.startCompetition(duration);
   await tx.wait();
@@ -26,14 +19,15 @@ async function main() {
   const now = Math.floor(Date.now() / 1000);
   const end = now + duration;
 
-  console.log("✅ Competition started!");
+  console.log("=================================");
+  console.log("Competition started");
+  console.log("Duration:", duration, "seconds");
   console.log("Start:", new Date(now * 1000).toLocaleString());
   console.log("End  :", new Date(end * 1000).toLocaleString());
   console.log("=================================");
 }
 
-main().catch((err) => {
-  console.error("❌ Error starting competition:");
-  console.error(err);
+main().catch((error) => {
+  console.error(error);
   process.exit(1);
 });

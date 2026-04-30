@@ -18,63 +18,48 @@ class NoiseBot(BaseBot, HumanBehavior):
     def step(self):
         self.update_mood()
 
-        product = self.random_product()
-        symbol = self.client.get_product_symbol(product)
+        pool = self.random_pool()
 
-        balance = self.product_balance(product)
-        cash = self.cash_balance()
+        if not pool:
+            self.log("sem pools")
+            return
 
-        # Crash aleatório raro: vende quase tudo sem lógica.
-        if balance > _CFG["min_sell_balance"] and random.random() < 0.05:
-            amount = round(balance * random.uniform(0.70, 1.00), 4)
+        if random.random() < 0.5:
+            token_in = pool["token0"]
+            token_out = pool["token1"]
+            symbol_in = pool["symbol0"]
+            symbol_out = pool["symbol1"]
+        else:
+            token_in = pool["token1"]
+            token_out = pool["token0"]
+            symbol_in = pool["symbol1"]
+            symbol_out = pool["symbol0"]
 
-            if amount > _CFG["min_sell_balance"]:
-                self.client.sell(product, amount)
-                self.log(f"PANIC CRASH SELL {symbol} | {amount} | mood={self.mood}")
-                return
+        fraction = _CFG["trade_fraction"]
 
-        if self.should_panic_sell():
-            if balance > _CFG["min_sell_balance"]:
-                amount = round(balance * random.uniform(0.45, 1.0), 4)
-                self.client.sell(product, amount)
-                self.log(f"PANIC SELL {symbol} | {amount} | mood={self.mood}")
-                return
+        if self.mood == "impulsive":
+            fraction *= random.uniform(1.2, 2.0)
 
-        if self.should_fomo_buy():
-            if cash > _CFG["min_cash"]:
-                base = min(_CFG["max_buy_cash"], cash * random.uniform(0.25, 0.75))
-                amount = self.human_amount(base)
-                self.client.buy(product, amount)
-                self.log(f"FOMO BUY {symbol} | {amount} CASH | mood={self.mood}")
-                return
+        if self.mood == "fearful":
+            fraction *= random.uniform(0.7, 1.5)
 
-        action = random.choice(["buy", "sell", "wait"])
+        amount = self.amount_from_balance(
+            token_in,
+            fraction,
+            _CFG["max_trade"],
+            _CFG["min_balance"]
+        )
 
-        if action == "wait":
+        if amount is None:
+            self.log(f"saldo insuficiente para swap {symbol_in}->{symbol_out} | mood={self.mood}")
+            return
+
+        if random.random() < 0.20:
             self.log(f"hesitou e nao operou | mood={self.mood}")
             return
 
-        if action == "buy":
-            if cash < _CFG["min_cash"]:
-                self.log("saldo CASH insuficiente para buy")
-                return
-
-            base = min(_CFG["max_buy_cash"], cash * _CFG["buy_fraction"])
-            amount = self.human_amount(base, 1)
-
-            self.client.buy(product, amount)
-            self.log(f"BUY aleatorio {symbol} | {amount} CASH | mood={self.mood}")
-            return
-
-        if balance <= _CFG["min_sell_balance"]:
-            self.log("saldo do produto insuficiente para sell")
-            return
-
-        base = balance * _CFG["sell_fraction"]
-        amount = self.human_amount(base, _CFG["min_sell_balance"])
-
-        self.client.sell(product, amount)
-        self.log(f"SELL aleatorio {symbol} | {amount} | mood={self.mood}")
+        self.swap(token_in, token_out, amount)
+        self.log(f"NOISE SWAP {amount} {symbol_in} -> {symbol_out} | mood={self.mood}")
 
 
 if __name__ == "__main__":

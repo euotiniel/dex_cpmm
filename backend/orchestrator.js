@@ -30,11 +30,7 @@ const BOT_CONFIGS = [
   { module: "bots.causes.noiseBot", name: "Bot de Ruído" },
   { module: "bots.causes.shockBot", name: "Bot de Choque" },
   { module: "bots.causes.trendBot", name: "Bot de Tendência" },
-  { module: "bots.conservativeBot", name: "Bot Conservador" },
-  { module: "bots.momentumBot", name: "Bot de Momentum" },
-  { module: "bots.meanReversionBot", name: "Bot de Reversão à Média" },
-  { module: "bots.marketMakerBot", name: "Bot Market Maker" },
-  { module: "bots.arbitrageBot", name: "Bot de Arbitragem" },
+  { module: "bots.causes.meanReversionBot", name: "Bot de Reversão à Média" },
 ];
 
 function resolvePythonCommand() {

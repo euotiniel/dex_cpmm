@@ -14,11 +14,10 @@ const totalVolumeEl = document.getElementById("total-volume");
 let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
-let selectedProductAddress = null;
+let selectedPoolId = null;
 let selectedTimeframe = 5;
-let tabsInitialized = false;
 let lastState = null;
-let lastProductsSignature = "";
+let lastPoolsSignature = "";
 
 let countdownInterval = null;
 let _countdownEndTime = 0;
@@ -46,6 +45,7 @@ function formatDuration(seconds) {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
+
   return [h, m, sec].map((u) => String(u).padStart(2, "0")).join(":");
 }
 
@@ -83,228 +83,6 @@ function startCountdown(endTimeUnix, serverNowMs = Date.now()) {
 
   tick();
   countdownInterval = setInterval(tick, 1000);
-}
-
-function buildCandles(pricePoints, timeframeSec) {
-  if (!pricePoints || pricePoints.length === 0) return [];
-
-  const tfMs = timeframeSec * 1000;
-  const bucketMap = new Map();
-
-  for (const { t, p } of pricePoints) {
-    if (!p || p <= 0) continue;
-
-    const bucketMs = Math.floor(t / tfMs) * tfMs;
-    const timeUnix = Math.floor(bucketMs / 1000);
-
-    if (!bucketMap.has(timeUnix)) {
-      bucketMap.set(timeUnix, {
-        time: timeUnix,
-        open: p,
-        high: p,
-        low: p,
-        close: p,
-      });
-    } else {
-      const c = bucketMap.get(timeUnix);
-      if (p > c.high) c.high = p;
-      if (p < c.low) c.low = p;
-      c.close = p;
-    }
-  }
-
-  return Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
-}
-
-function buildVolume(trades, productAddress, timeframeSec) {
-  if (!trades || !productAddress) return [];
-
-  const tfMs = timeframeSec * 1000;
-  const productKey = productAddress.toLowerCase();
-  const bucketMap = new Map();
-
-  for (const trade of trades) {
-    if ((trade.productToken || "").toLowerCase() !== productKey) continue;
-
-    const t = trade.timestamp || 0;
-    const bucketMs = Math.floor(t / tfMs) * tfMs;
-    const timeUnix = Math.floor(bucketMs / 1000);
-    const vol =
-      trade.type === "BUY"
-        ? Number(trade.amountIn || 0)
-        : Number(trade.amountOut || 0);
-
-    if (!bucketMap.has(timeUnix)) {
-      bucketMap.set(timeUnix, {
-        time: timeUnix,
-        value: vol,
-        color:
-          trade.type === "BUY"
-            ? "rgba(34,197,94,0.4)"
-            : "rgba(239,68,68,0.4)",
-      });
-    } else {
-      bucketMap.get(timeUnix).value += vol;
-    }
-  }
-
-  return Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
-}
-
-function initChart() {
-  const container = document.getElementById("chart-container");
-  if (!container || typeof LightweightCharts === "undefined") return;
-
-  chart = LightweightCharts.createChart(container, {
-    width: container.offsetWidth,
-    height: 400,
-    layout: {
-      background: { type: "solid", color: "#0f1419" },
-      textColor: "#9aa4b2",
-    },
-    grid: {
-      vertLines: { color: "#1e2730" },
-      horzLines: { color: "#1e2730" },
-    },
-    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-    rightPriceScale: { borderColor: "#27313d" },
-    timeScale: {
-      borderColor: "#27313d",
-      timeVisible: true,
-      secondsVisible: selectedTimeframe <= 15,
-    },
-  });
-
-  candleSeries = chart.addCandlestickSeries({
-    upColor: "#22c55e",
-    downColor: "#ef4444",
-    borderVisible: false,
-    wickUpColor: "#22c55e",
-    wickDownColor: "#ef4444",
-  });
-
-  volumeSeries = chart.addHistogramSeries({
-    priceFormat: { type: "volume" },
-    priceScaleId: "volume",
-    scaleMargins: { top: 0.82, bottom: 0 },
-  });
-
-  chart.priceScale("volume").applyOptions({
-    scaleMargins: { top: 0.82, bottom: 0 },
-  });
-
-  const placeholder = container.querySelector(".chart-empty");
-  if (placeholder) placeholder.remove();
-
-  window.addEventListener("resize", () => {
-    if (chart) chart.applyOptions({ width: container.offsetWidth });
-  });
-}
-
-function updateChart(state) {
-  if (!chart || !candleSeries || !selectedProductAddress) return;
-
-  const productKey = selectedProductAddress.toLowerCase();
-  let priceHistory = (state.priceHistory || {})[productKey] || [];
-  const trades = state.trades || [];
-
-  if (priceHistory.length === 0) {
-    const pool = (state.pools || {})[productKey];
-    const spotPrice = Number(pool?.spotPrice || 0);
-
-    if (spotPrice > 0) {
-      priceHistory = [{ t: state.lastUpdatedAt || Date.now(), p: spotPrice }];
-    }
-  }
-
-  const candles = buildCandles(priceHistory, selectedTimeframe);
-  const volume = buildVolume(trades, selectedProductAddress, selectedTimeframe);
-
-  candleSeries.setData(candles);
-  volumeSeries.setData(volume);
-
-  chart.applyOptions({
-    timeScale: { secondsVisible: selectedTimeframe <= 15 },
-  });
-
-  if (candles.length > 0) {
-    chart.timeScale().fitContent();
-  } else {
-    chart.timeScale().resetTimeScale();
-  }
-}
-
-function populateTokenTabs(products) {
-  const tabContainer = document.getElementById("chart-token-tabs");
-  if (!tabContainer || !products.length) return;
-
-  if (!selectedProductAddress) selectedProductAddress = products[0].address;
-
-  tabContainer.innerHTML = products
-    .map((p) => {
-      const active =
-        p.address.toLowerCase() === selectedProductAddress.toLowerCase()
-          ? "active"
-          : "";
-
-      return `<button class="chart-tab ${active}" data-address="${p.address}">
-        ${p.symbol || p.address.slice(0, 6)}
-      </button>`;
-    })
-    .join("");
-
-  tabContainer.querySelectorAll(".chart-tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      tabContainer.querySelectorAll(".chart-tab").forEach((b) => {
-        b.classList.remove("active");
-      });
-
-      btn.classList.add("active");
-      selectedProductAddress = btn.dataset.address;
-
-      if (lastState) updateChart(lastState);
-    });
-  });
-}
-
-function getProductsSignature(products = []) {
-  return products.map((p) => (p.address || "").toLowerCase()).join("|");
-}
-
-function ensureChartProducts(products = []) {
-  const signature = getProductsSignature(products);
-  if (!signature) return;
-
-  if (signature !== lastProductsSignature) {
-    lastProductsSignature = signature;
-    selectedProductAddress = products[0]?.address || null;
-    tabsInitialized = false;
-
-    if (candleSeries) candleSeries.setData([]);
-    if (volumeSeries) volumeSeries.setData([]);
-  }
-
-  if (!tabsInitialized && products.length > 0) {
-    populateTokenTabs(products);
-    tabsInitialized = true;
-
-    if (!chart) initChart();
-  }
-}
-
-function initTfButtons() {
-  document.querySelectorAll(".tf-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tf-btn").forEach((b) => {
-        b.classList.remove("active");
-      });
-
-      btn.classList.add("active");
-      selectedTimeframe = Number(btn.dataset.tf);
-
-      if (lastState) updateChart(lastState);
-    });
-  });
 }
 
 function renderStatus(status = {}, serverNowMs = Date.now()) {
@@ -360,66 +138,80 @@ function renderStatus(status = {}, serverNowMs = Date.now()) {
   competitionTimeEl.textContent = "--:--:--";
 }
 
+function poolsArray(state) {
+  return Object.values(state.pools || {});
+}
+
+function tokensArray(state) {
+  return state.tokens || [];
+}
+
 function renderStats(state) {
   const trades = state.trades || [];
   const ranking = state.ranking || [];
-  const products = state.products || [];
+  const pools = poolsArray(state);
+  const ref = state.referenceToken?.symbol || "--";
 
   totalTradesEl.textContent = trades.length;
   activeBotsEl.textContent = ranking.length;
-  totalMarketsEl.textContent = products.length;
-
-  const totalVolume = trades.reduce((sum, t) => {
-    if (t.type === "BUY") return sum + Number(t.amountIn || 0);
-    if (t.type === "SELL") return sum + Number(t.amountOut || 0);
-    return sum;
-  }, 0);
-
-  totalVolumeEl.textContent = `${formatNumber(totalVolume, 2)} CASH`;
+  totalMarketsEl.textContent = pools.length;
+  totalVolumeEl.textContent = ref;
 }
 
-function renderProducts(products = [], pools = {}, initialPrices = {}) {
-  if (!products.length) {
-    productsContainer.innerHTML = `<p class="empty">Nenhum mercado encontrado.</p>`;
+function renderProducts(tokens = [], pools = {}, referenceToken = {}) {
+  const poolList = Object.values(pools || {});
+
+  if (!poolList.length) {
+    productsContainer.innerHTML = `<p class="empty">Nenhuma pool encontrada.</p>`;
     return;
   }
 
-  productsContainer.innerHTML = products
-    .map((product) => {
-      const symbol = product.symbol || "TOKEN";
-      const key = product.address?.toLowerCase();
-      const pool = pools[key] || {};
-      const spotPrice = Number(pool.spotPrice || 0);
-      const reserveBase = Number(pool.reserveBase || 0);
-      const liquidity = reserveBase * 2;
-      const initPrice = initialPrices[key];
+  productsContainer.innerHTML = poolList
+    .map((pool) => {
+      const reserve0 = Number(pool.reserve0 || 0);
+      const reserve1 = Number(pool.reserve1 || 0);
+      const price01 = reserve0 > 0 ? reserve1 / reserve0 : 0;
+      const price10 = reserve1 > 0 ? reserve0 / reserve1 : 0;
 
-      const pctChange =
-        initPrice && initPrice > 0
-          ? ((spotPrice - initPrice) / initPrice) * 100
-          : null;
+      const isRef0 =
+        referenceToken?.address &&
+        pool.token0?.toLowerCase() === referenceToken.address.toLowerCase();
 
-      const changeBadge =
-        pctChange !== null
-          ? `<span class="price-change ${pctChange >= 0 ? "up" : "down"}">
-              ${pctChange >= 0 ? "+" : ""}${pctChange.toFixed(2)}%
-            </span>`
+      const isRef1 =
+        referenceToken?.address &&
+        pool.token1?.toLowerCase() === referenceToken.address.toLowerCase();
+
+      const refBadge =
+        isRef0 || isRef1
+          ? `<span class="price-change up">REF</span>`
           : "";
 
       return `
         <article class="market-card">
           <div class="market-pair">
-            <strong>${symbol}/CASH</strong>
-            ${changeBadge}
+            <strong>${pool.pair || `${pool.symbol0}/${pool.symbol1}`}</strong>
+            ${refBadge}
           </div>
+
           <div class="market-data">
             <div class="market-line">
-              <span>Price</span>
-              <strong>${formatNumber(spotPrice, 5)}</strong>
+              <span>${pool.symbol0} reserve</span>
+              <strong>${formatNumber(reserve0, 2)}</strong>
             </div>
+
             <div class="market-line">
-              <span>Liquidity</span>
-              <strong>${formatNumber(liquidity, 2)}</strong>
+              <span>${pool.symbol1} reserve</span>
+              <strong>${formatNumber(reserve1, 2)}</strong>
+            </div>
+
+            <div class="market-line">
+              <span>1 ${pool.symbol0}</span>
+              <strong>${formatNumber(price01, 5)} ${pool.symbol1}</strong>
+            </div>
+
+            <div class="market-line">
+              <span>1 ${pool.symbol1}</span>
+              <strong>${formatNumber(price10, 5)} ${pool.symbol0}</strong>
             </div>
           </div>
         </article>
@@ -430,15 +222,13 @@ function renderProducts(products = [], pools = {}, initialPrices = {}) {
 
 function renderTrades(trades = [], traderNameMap = {}) {
   if (!trades.length) {
-    tradesContainer.innerHTML = `<p class="empty">Ainda não há trades.</p>`;
+    tradesContainer.innerHTML = `<p class="empty">Ainda não há swaps.</p>`;
     return;
   }
 
   tradesContainer.innerHTML = trades
     .slice(0, 14)
     .map((trade) => {
-      const type = trade.type || "-";
-      const typeClass = type === "BUY" ? "buy" : "sell";
       const traderName =
         trade.traderName ||
         traderNameMap[(trade.trader || "").toLowerCase()] ||
@@ -446,18 +236,14 @@ function renderTrades(trades = [], traderNameMap = {}) {
 
       const amountIn = formatNumber(trade.amountIn, 4);
       const amountOut = formatNumber(trade.amountOut, 4);
-      const product = trade.productSymbol || "PROD";
 
-      const flow =
-        type === "BUY"
-          ? `${amountIn} CASH → ${amountOut} ${product}`
-          : `${amountIn} ${product} → ${amountOut} CASH`;
+      const flow = `${amountIn} ${trade.tokenInSymbol || "TKN"} → ${amountOut} ${trade.tokenOutSymbol || "TKN"}`;
 
       return `
         <article class="trade-card">
           <div class="trade-main">
             <div class="trade-left">
-              <span class="trade-side ${typeClass}">${type}</span>
+              <span class="trade-side swap">SWAP</span>
               <span class="trade-bot">${traderName}</span>
             </div>
             <span class="trade-time">${formatTradeTime(trade.timestamp)}</span>
@@ -471,22 +257,21 @@ function renderTrades(trades = [], traderNameMap = {}) {
 
 function getTraderTradeStats(trades = [], traderAddress) {
   const key = (traderAddress || "").toLowerCase();
-  const stats = { total: 0, buys: 0, sells: 0 };
+  const stats = { total: 0, swaps: 0 };
 
   for (const trade of trades) {
     if ((trade.trader || "").toLowerCase() !== key) continue;
 
     stats.total += 1;
-    if (trade.type === "BUY") stats.buys += 1;
-    if (trade.type === "SELL") stats.sells += 1;
+    stats.swaps += 1;
   }
 
   return stats;
 }
 
-function renderRanking(ranking = [], competitionStatus, trades = []) {
+function renderRanking(ranking = [], competitionStatus, trades = [], tokens = [], referenceToken = {}) {
   if (!ranking.length) {
-    rankingBody.innerHTML = `<tr><td colspan="5" class="empty">Ranking ainda vazio.</td></tr>`;
+    rankingBody.innerHTML = `<tr><td colspan="10" class="empty">Ranking ainda vazio.</td></tr>`;
     return;
   }
 
@@ -499,9 +284,21 @@ function renderRanking(ranking = [], competitionStatus, trades = []) {
       const pnl = Number(item.pnl || 0);
       const pnlClass = pnl >= 0 ? "pnl-positive" : "pnl-negative";
       const pnlPct = Number(item.pnlPct || 0);
-      const isWinner = competitionStatus === "ENDED" && index === 0;
       const pnlSign = pnl >= 0 ? "+" : "";
+      const isWinner = competitionStatus === "ENDED" && index === 0;
       const stats = getTraderTradeStats(trades, item.trader);
+
+      const balances = item.balances || {};
+
+      const tokenCells = tokens.map((token) => {
+        const value = balances[token.address.toLowerCase()] || 0;
+
+        return `
+          <td class="token-balance-cell">
+            ${formatNumber(value, 2)}
+          </td>
+        `;
+      }).join("");
 
       return `
         <tr class="${isWinner ? "final-winner" : ""}">
@@ -512,7 +309,12 @@ function renderRanking(ranking = [], competitionStatus, trades = []) {
             <span class="address">${shortAddress(item.trader)}</span>
           </td>
 
-          <td>${formatNumber(item.totalValue, 4)}</td>
+          ${tokenCells}
+
+          <td>
+            ${formatNumber(item.totalValue, 4)}
+            <span class="address">${referenceToken.symbol || "REF"}</span>
+          </td>
 
           <td class="${pnlClass}">
             ${pnlSign}${formatNumber(pnl, 2)}
@@ -523,10 +325,8 @@ function renderRanking(ranking = [], competitionStatus, trades = []) {
 
           <td>
             <div class="ops-cell">
-              <strong>${stats.total}</strong>
               <span class="ops-breakdown">
-                <span class="op-buy">↑ ${stats.buys}</span>
-                <span class="op-sell">↓ ${stats.sells}</span>
+                <span class="op-swap">↔ ${stats.swaps}</span>
               </span>
             </div>
           </td>
@@ -546,61 +346,204 @@ function buildTraderNameMap(ranking) {
   return map;
 }
 
-function renderAll(state) {
-  lastState = state;
+function buildCandles(pricePoints, timeframeSec) {
+  if (!pricePoints || pricePoints.length === 0) return [];
 
-  const products = state.products || [];
-  const pools = state.pools || {};
-  const trades = state.trades || [];
-  const ranking = state.ranking || [];
-  const status = state.status || {};
-  const initialPrices = state.initialPrices || {};
-  const traderNameMap = buildTraderNameMap(ranking);
+  const tfMs = timeframeSec * 1000;
+  const bucketMap = new Map();
 
-  renderControlPanel(state);
-  renderStatus(status, state.lastUpdatedAt || Date.now());
-  renderStats(state);
-  renderProducts(products, pools, initialPrices);
-  renderTrades(trades, traderNameMap);
-  renderRanking(ranking, status.competitionStatus, trades);
+  for (const { t, p } of pricePoints) {
+    if (!p || p <= 0) continue;
 
-  ensureChartProducts(products);
-  updateChart(state);
-}
+    const bucketMs = Math.floor(t / tfMs) * tfMs;
+    const timeUnix = Math.floor(bucketMs / 1000);
 
-function connectSSE() {
-  if (eventSource) {
-    eventSource.close();
-    eventSource = null;
+    if (!bucketMap.has(timeUnix)) {
+      bucketMap.set(timeUnix, {
+        time: timeUnix,
+        open: p,
+        high: p,
+        low: p,
+        close: p,
+      });
+    } else {
+      const c = bucketMap.get(timeUnix);
+      if (p > c.high) c.high = p;
+      if (p < c.low) c.low = p;
+      c.close = p;
+    }
   }
 
-  eventSource = new EventSource(`${API_BASE}/events`);
+  return Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
+}
 
-  eventSource.onmessage = (event) => {
-    try {
-      const state = JSON.parse(event.data);
-      renderAll(state);
-    } catch (e) {
-      console.error("SSE parse error:", e);
+function buildVolume(trades, poolId, timeframeSec) {
+  if (!trades || !poolId) return [];
+
+  const tfMs = timeframeSec * 1000;
+  const key = String(poolId).toLowerCase();
+  const bucketMap = new Map();
+
+  for (const trade of trades) {
+    if (String(trade.poolId || "").toLowerCase() !== key) continue;
+
+    const t = trade.timestamp || 0;
+    const bucketMs = Math.floor(t / tfMs) * tfMs;
+    const timeUnix = Math.floor(bucketMs / 1000);
+    const vol = Number(trade.amountIn || 0);
+
+    if (!bucketMap.has(timeUnix)) {
+      bucketMap.set(timeUnix, {
+        time: timeUnix,
+        value: vol,
+      });
+    } else {
+      bucketMap.get(timeUnix).value += vol;
     }
-  };
+  }
 
-  eventSource.onerror = () => {
-    const livePill = document.querySelector(".live-pill");
-    livePill.classList.remove("active", "ended", "pending");
-    livePill.classList.add("error");
+  return Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
+}
 
-    competitionStatusEl.textContent = "OFFLINE";
-    timeLabelEl.textContent = "Reconectando...";
+function initChart() {
+  const container = document.getElementById("chart-container");
+  if (!container || typeof LightweightCharts === "undefined") return;
 
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
-    }
+  chart = LightweightCharts.createChart(container, {
+    width: container.offsetWidth,
+    height: 400,
+    layout: {
+      background: { type: "solid", color: "#0f1419" },
+      textColor: "#9aa4b2",
+    },
+    grid: {
+      vertLines: { color: "#1e2730" },
+      horzLines: { color: "#1e2730" },
+    },
+    rightPriceScale: { borderColor: "#27313d" },
+    timeScale: {
+      borderColor: "#27313d",
+      timeVisible: true,
+      secondsVisible: selectedTimeframe <= 15,
+    },
+  });
 
-    clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(connectSSE, 3000);
-  };
+  candleSeries = chart.addCandlestickSeries({
+    upColor: "#22c55e",
+    downColor: "#ef4444",
+    borderVisible: false,
+    wickUpColor: "#22c55e",
+    wickDownColor: "#ef4444",
+  });
+
+  volumeSeries = chart.addHistogramSeries({
+    priceFormat: { type: "volume" },
+    priceScaleId: "volume",
+    scaleMargins: { top: 0.82, bottom: 0 },
+  });
+
+  chart.priceScale("volume").applyOptions({
+    scaleMargins: { top: 0.82, bottom: 0 },
+  });
+
+  const placeholder = container.querySelector(".chart-empty");
+  if (placeholder) placeholder.remove();
+
+  window.addEventListener("resize", () => {
+    if (chart) chart.applyOptions({ width: container.offsetWidth });
+  });
+}
+
+function updateChart(state) {
+  if (!chart || !candleSeries || !selectedPoolId) return;
+
+  const key = String(selectedPoolId).toLowerCase();
+  const priceHistory = (state.priceHistory || {})[key] || [];
+  const trades = state.trades || [];
+
+  const candles = buildCandles(priceHistory, selectedTimeframe);
+  const volume = buildVolume(trades, selectedPoolId, selectedTimeframe);
+
+  candleSeries.setData(candles);
+  volumeSeries.setData(volume);
+
+  if (candles.length > 0) {
+    chart.timeScale().fitContent();
+  }
+}
+
+function populatePoolTabs(pools) {
+  const tabContainer = document.getElementById("chart-token-tabs");
+  if (!tabContainer) return;
+
+  const poolList = Object.values(pools || {});
+
+  if (!poolList.length) {
+    tabContainer.innerHTML = "";
+    return;
+  }
+
+  if (!selectedPoolId) selectedPoolId = poolList[0].poolId;
+
+  tabContainer.innerHTML = poolList
+    .map((pool) => {
+      const active =
+        String(pool.poolId).toLowerCase() === String(selectedPoolId).toLowerCase()
+          ? "active"
+          : "";
+
+      return `<button class="chart-tab ${active}" data-pool="${pool.poolId}">
+        ${pool.pair || `${pool.symbol0}/${pool.symbol1}`}
+      </button>`;
+    })
+    .join("");
+
+  tabContainer.querySelectorAll(".chart-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      tabContainer.querySelectorAll(".chart-tab").forEach((b) => {
+        b.classList.remove("active");
+      });
+
+      btn.classList.add("active");
+      selectedPoolId = btn.dataset.pool;
+
+      if (lastState) updateChart(lastState);
+    });
+  });
+}
+
+function ensureChartPools(pools = {}) {
+  const poolList = Object.values(pools || {});
+  const signature = poolList.map((p) => String(p.poolId).toLowerCase()).join("|");
+
+  if (!signature) return;
+
+  if (signature !== lastPoolsSignature) {
+    lastPoolsSignature = signature;
+    selectedPoolId = poolList[0]?.poolId || null;
+
+    if (candleSeries) candleSeries.setData([]);
+    if (volumeSeries) volumeSeries.setData([]);
+
+    populatePoolTabs(pools);
+  }
+
+  if (!chart) initChart();
+}
+
+function initTfButtons() {
+  document.querySelectorAll(".tf-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tf-btn").forEach((b) => {
+        b.classList.remove("active");
+      });
+
+      btn.classList.add("active");
+      selectedTimeframe = Number(btn.dataset.tf);
+
+      if (lastState) updateChart(lastState);
+    });
+  });
 }
 
 const TRANSITIONING = new Set([
@@ -658,13 +601,6 @@ function updateButtonStates(state) {
     orchState === "RUNNING" &&
     competitionStatus === "ACTIVE";
 
-  const canRestartBots =
-    !isBusy &&
-    competitionStatus !== "ACTIVE" &&
-    (orchState === "RUNNING" ||
-      orchState === "STOPPED" ||
-      orchState === "ERROR");
-
   const canRestartApp =
     !isBusy &&
     competitionStatus !== "ACTIVE" &&
@@ -677,22 +613,18 @@ function updateButtonStates(state) {
 
   if (btnStart) btnStart.disabled = !canStart;
   if (btnStop) btnStop.disabled = !canStop;
-  if (btnRestartBots) btnRestartBots.disabled = !canRestartBots;
+  if (btnRestartBots) btnRestartBots.disabled = true;
   if (btnRestartApp) btnRestartApp.disabled = !canRestartApp;
 
   const hint = document.getElementById("ctrl-hint");
 
   if (hint) {
     if (mode === "MANUAL_ACTIVE") {
-      hint.textContent =
-        "Competição ativa fora do orchestrator. A UI lê o estado, mas pode não controlar bots iniciados no terminal.";
+      hint.textContent = "Competição ativa fora do orchestrator.";
     } else if (competitionStatus === "ACTIVE") {
       hint.textContent = "Competição em execução.";
-    } else if (competitionStatus === "ENDED" && orchState === "RUNNING") {
-      hint.textContent =
-        "Competição terminou. Aguardando sincronização do controlador.";
     } else if (competitionStatus === "ENDED") {
-      hint.textContent = "Competição terminada. Podes reiniciar os bots.";
+      hint.textContent = "Competição terminada.";
     } else {
       hint.textContent = "Pronto para iniciar.";
     }
@@ -705,6 +637,64 @@ function renderControlPanel(state) {
   updateButtonStates(state);
 }
 
+function renderAll(state) {
+  lastState = state;
+
+  const tokens = tokensArray(state);
+  const pools = state.pools || {};
+  const trades = state.trades || [];
+  const ranking = state.ranking || [];
+  const status = state.status || {};
+  const referenceToken = state.referenceToken || {};
+  const traderNameMap = buildTraderNameMap(ranking);
+
+  renderControlPanel(state);
+  renderStatus(status, state.lastUpdatedAt || Date.now());
+  renderStats(state);
+  renderProducts(tokens, pools, referenceToken);
+  renderTrades(trades, traderNameMap);
+  renderRanking(ranking, status.competitionStatus, trades, tokens, referenceToken);
+
+  ensureChartPools(pools);
+  updateChart(state);
+}
+
+function connectSSE() {
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+
+  eventSource = new EventSource(`${API_BASE}/events`);
+
+  eventSource.onmessage = (event) => {
+    try {
+      const state = JSON.parse(event.data);
+      renderAll(state);
+    } catch (e) {
+      console.error("SSE parse error:", e);
+    }
+  };
+
+  eventSource.onerror = () => {
+    const livePill = document.querySelector(".live-pill");
+
+    livePill.classList.remove("active", "ended", "pending");
+    livePill.classList.add("error");
+
+    competitionStatusEl.textContent = "OFFLINE";
+    timeLabelEl.textContent = "Reconectando...";
+
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connectSSE, 3000);
+  };
+}
+
 async function apiPost(path, body = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
@@ -713,6 +703,7 @@ async function apiPost(path, body = {}) {
   });
 
   const json = await res.json();
+
   if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
 
   return json;
@@ -724,6 +715,7 @@ function getDuration() {
 
 function withLoading(btn, fn) {
   const orig = btn.textContent;
+
   btn.disabled = true;
   btn.textContent = "Working…";
 
@@ -735,6 +727,7 @@ function withLoading(btn, fn) {
     .finally(() => {
       btn.textContent = orig;
       btn.disabled = false;
+
       if (lastState) renderControlPanel(lastState);
     });
 }
@@ -749,16 +742,8 @@ document.getElementById("btn-stop-app")?.addEventListener("click", (e) => {
   withLoading(e.currentTarget, () => apiPost("/orchestrate/stop-app"));
 });
 
-document.getElementById("btn-restart-bots")?.addEventListener("click", (e) => {
-  withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/restart-bots", { duration: getDuration() })
-  );
-});
-
 document.getElementById("btn-restart-app")?.addEventListener("click", (e) => {
-  const ok = confirm(
-    "Restart the application? This will reset market balances and relaunch all bots."
-  );
+  const ok = confirm("Full reset? Isto vai redesplegar contratos e reiniciar a competição.");
 
   if (!ok) return;
 
@@ -767,5 +752,16 @@ document.getElementById("btn-restart-app")?.addEventListener("click", (e) => {
   );
 });
 
+async function fetchInitialState() {
+  try {
+    const res = await fetch(`${API_BASE}/state`);
+    const state = await res.json();
+    renderAll(state);
+  } catch (e) {
+    console.error("Initial state fetch failed:", e);
+  }
+}
+
 initTfButtons();
+fetchInitialState();
 connectSSE();

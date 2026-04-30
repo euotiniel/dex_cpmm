@@ -1142,3 +1142,107 @@ tbody td {
     justify-content: flex-start;
   }
 }
+
+.trade-side.swap {
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+.op-swap {
+  color: #60a5fa;
+}
+
+.market-card .price-change.up {
+  letter-spacing: 0.08em;
+}
+
+.token-balance-cell {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.leaderboard-panel {
+  overflow-x: auto;
+}
+
+.leaderboard-panel table {
+  min-width: 920px;
+}
+
+.app {
+  max-width: 1380px;
+}
+
+.layout {
+  display: block;
+}
+
+.middle-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2.25fr) minmax(360px, 0.95fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.leaderboard-panel,
+.trades-panel {
+  min-height: 520px;
+}
+
+.leaderboard-panel .table-wrapper {
+  overflow-x: visible;
+}
+
+.leaderboard-panel table {
+  min-width: 0;
+}
+
+.token-balance-cell {
+  font-family: monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 78px;
+}
+
+.token-balance-cell strong {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.token-balance-cell span {
+  display: block;
+  color: var(--muted-2);
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.trades-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.trades-panel .trades-list {
+  max-height: 440px;
+}
+
+.trade-flow {
+  white-space: normal;
+  word-break: break-word;
+}
+
+@media (max-width: 1180px) {
+  .middle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .leaderboard-panel .table-wrapper {
+    overflow-x: auto;
+  }
+
+  .leaderboard-panel table {
+    min-width: 920px;
+  }
+}

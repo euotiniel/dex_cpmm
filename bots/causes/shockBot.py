@@ -16,129 +16,76 @@ class ShockBot(BaseBot, HumanBehavior):
         HumanBehavior.__init__(self)
         self.initial_prices = {}
 
-    def get_target_to_sell(self):
-        pools = self.client.get_all_pools()
+    def _remember_initial(self, pool):
+        key = pool["pool_id"].hex() if hasattr(pool["pool_id"], "hex") else str(pool["pool_id"])
 
-        if not pools:
-            return None
+        if key not in self.initial_prices:
+            self.initial_prices[key] = pool["price01"]
 
-        best_pool = None
+        return self.initial_prices[key]
+
+    def find_top_gainer_pair(self):
+        best = None
         best_gain = -999
 
-        for pool in pools:
-            address = pool["address"]
-            price = pool["spot_price"]
-
-            if price <= 0:
-                continue
-
-            if address not in self.initial_prices:
-                self.initial_prices[address] = price
-
-            initial = self.initial_prices[address]
+        for pool in self.pools():
+            initial = self._remember_initial(pool)
 
             if initial <= 0:
                 continue
 
-            gain = (price - initial) / initial
-            balance = self.product_balance(address)
-
-            if balance <= _CFG["min_sell_balance"]:
-                continue
+            gain = (pool["price01"] - initial) / initial
 
             if gain > best_gain:
                 best_gain = gain
-                best_pool = {
+                best = {
                     **pool,
                     "gain": gain,
-                    "balance": balance,
+                    "token_to_sell": pool["token0"],
+                    "token_to_buy": pool["token1"],
+                    "sell_symbol": pool["symbol0"],
+                    "buy_symbol": pool["symbol1"]
                 }
 
-        return best_pool
-
-    def get_target_to_buy(self):
-        pools = self.client.get_all_pools()
-
-        if not pools:
-            return None
-
-        worst_pool = None
-        worst_gain = 999
-
-        for pool in pools:
-            address = pool["address"]
-            price = pool["spot_price"]
-
-            if price <= 0:
-                continue
-
-            if address not in self.initial_prices:
-                self.initial_prices[address] = price
-
-            initial = self.initial_prices[address]
-
-            if initial <= 0:
-                continue
-
-            gain = (price - initial) / initial
-
-            if gain < worst_gain:
-                worst_gain = gain
-                worst_pool = {
-                    **pool,
-                    "gain": gain,
-                }
-
-        return worst_pool
+        return best
 
     def step(self):
         self.update_mood()
 
-        cash = self.cash_balance()
+        target = self.find_top_gainer_pair()
 
-        sell_target = self.get_target_to_sell()
-
-        # 1. Pressão vendedora: vende o produto que mais subiu.
-        if sell_target and random.random() < 0.65:
-            sell_power = random.uniform(0.35, 0.85)
-            amount = round(sell_target["balance"] * sell_power, 4)
-
-            if amount > _CFG["min_sell_balance"]:
-                self.client.sell(sell_target["address"], amount)
-                self.log(
-                    f"PRESSURE SELL {sell_target['symbol']} | {amount} | "
-                    f"top gainer={sell_target['gain']:+.2%} | mood={self.mood}"
-                )
-                return
-
-        # 2. Dump forte: também no produto que mais subiu.
-        if sell_target and random.random() < 0.18:
-            amount = round(sell_target["balance"] * random.uniform(0.75, 1.0), 4)
-
-            if amount > _CFG["min_sell_balance"]:
-                self.client.sell(sell_target["address"], amount)
-                self.log(
-                    f"HARD DUMP SELL {sell_target['symbol']} | {amount} | "
-                    f"top gainer={sell_target['gain']:+.2%} | mood={self.mood}"
-                )
-                return
-
-        # 3. Recarrega inventário comprando o produto que mais caiu.
-        buy_target = self.get_target_to_buy()
-
-        if buy_target and cash > _CFG["min_cash"] and random.random() < 0.45:
-            base = min(_CFG["max_buy_cash"], cash * _CFG["buy_fraction"])
-            base = base * random.uniform(0.35, 0.75)
-            amount = self.human_amount(base, _CFG["min_buy_amount"])
-
-            self.client.buy(buy_target["address"], amount)
-            self.log(
-                f"RELOAD BUY {buy_target['symbol']} | {amount} CASH | "
-                f"loser={buy_target['gain']:+.2%} | mood={self.mood}"
-            )
+        if not target:
+            self.log("sem alvo de choque")
             return
 
-        self.log(f"sem choque neste ciclo | mood={self.mood}")
+        probability = _CFG["pressure_probability"]
+
+        if random.random() > probability:
+            self.log(f"sem choque neste ciclo | mood={self.mood}")
+            return
+
+        sell_fraction = _CFG["sell_fraction"]
+
+        if random.random() < _CFG["hard_dump_probability"]:
+            sell_fraction = random.uniform(0.65, 0.95)
+
+        amount = self.amount_from_balance(
+            target["token_to_sell"],
+            sell_fraction,
+            _CFG["max_trade"],
+            _CFG["min_balance"]
+        )
+
+        if amount is None:
+            self.log(f"sem saldo para vender {target['sell_symbol']}")
+            return
+
+        self.swap(target["token_to_sell"], target["token_to_buy"], amount)
+
+        self.log(
+            f"SHOCK SELL {amount} {target['sell_symbol']} -> {target['buy_symbol']} | "
+            f"gainer={target['gain']:+.2%} | mood={self.mood}"
+        )
 
 
 if __name__ == "__main__":

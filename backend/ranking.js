@@ -8,116 +8,112 @@ export function formatUnitsSafe(value, decimals = 18) {
   }
 }
 
-function normalizeAddress(address) {
+function norm(address) {
   return String(address || "").toLowerCase();
 }
 
-function getPoolForProduct(productAddress, poolsByProduct = {}) {
-  const key = normalizeAddress(productAddress);
-  return poolsByProduct[key] || poolsByProduct[productAddress] || null;
-}
+function buildConversionGraph(pools = {}) {
+  const graph = {};
 
-function calculateCpmmSellValue({
-  productAmount,
-  productReserve,
-  baseReserve,
-  feePct = 0.003,
-}) {
-  if (productAmount <= 0 || productReserve <= 0 || baseReserve <= 0) {
-    return 0;
-  }
+  for (const pool of Object.values(pools || {})) {
+    if (!pool?.exists) continue;
 
-  const amountInAfterFee = productAmount * (1 - feePct);
+    const token0 = norm(pool.token0);
+    const token1 = norm(pool.token1);
+    const reserve0 = Number(pool.reserve0 || 0);
+    const reserve1 = Number(pool.reserve1 || 0);
 
-  return (
-    (amountInAfterFee * baseReserve) /
-    (productReserve + amountInAfterFee)
-  );
-}
+    if (!token0 || !token1 || reserve0 <= 0 || reserve1 <= 0) continue;
 
-function calculateWalletValueInBase({
-  baseBalance,
-  productBalances,
-  poolsByProduct,
-  feePct,
-}) {
-  let total = baseBalance;
+    if (!graph[token0]) graph[token0] = [];
+    if (!graph[token1]) graph[token1] = [];
 
-  for (const productAddress of Object.keys(productBalances || {})) {
-    const productAmount = Number(productBalances[productAddress] || 0);
+    graph[token0].push({
+      to: token1,
+      rate: reserve1 / reserve0,
+    });
 
-    if (productAmount <= 0) continue;
-
-    const pool = getPoolForProduct(productAddress, poolsByProduct);
-
-    if (!pool) continue;
-
-    const productReserve = Number(
-      pool.reserveProduct ??
-      pool.productReserve ??
-      pool.product_reserve ??
-      pool.productBalance ??
-      pool.tokenReserve ??
-      0
-    );
-
-    const baseReserve = Number(
-      pool.reserveBase ??
-      pool.baseReserve ??
-      pool.base_reserve ??
-      pool.cashReserve ??
-      pool.baseBalance ??
-      0
-    );
-
-    total += calculateCpmmSellValue({
-      productAmount,
-      productReserve,
-      baseReserve,
-      feePct,
+    graph[token1].push({
+      to: token0,
+      rate: reserve0 / reserve1,
     });
   }
 
-  return total;
+  return graph;
+}
+
+function getRateToReference(tokenAddress, referenceToken, graph) {
+  const start = norm(tokenAddress);
+  const target = norm(referenceToken);
+
+  if (!start || !target) return 0;
+  if (start === target) return 1;
+
+  const queue = [{ token: start, rate: 1 }];
+  const visited = new Set([start]);
+
+  while (queue.length) {
+    const current = queue.shift();
+    const edges = graph[current.token] || [];
+
+    for (const edge of edges) {
+      if (visited.has(edge.to)) continue;
+
+      const nextRate = current.rate * edge.rate;
+
+      if (edge.to === target) {
+        return nextRate;
+      }
+
+      visited.add(edge.to);
+      queue.push({
+        token: edge.to,
+        rate: nextRate,
+      });
+    }
+  }
+
+  return 0;
 }
 
 export function calculateRanking({
   traders,
-  baseBalances,
-  productBalancesByTrader,
-  poolsByProduct,
-  initialBaseBalance,
-  feePct = 0.003,
+  tokenBalancesByTrader,
+  pools,
+  referenceToken,
+  initialReferenceValue = 5000,
 }) {
+  const graph = buildConversionGraph(pools);
+
   const ranking = traders.map((traderAddress) => {
-    const traderKey = normalizeAddress(traderAddress);
+    const traderKey = norm(traderAddress);
+    const balances = tokenBalancesByTrader[traderKey] || {};
 
-    const baseBalance = Number(baseBalances[traderKey] || 0);
-    const productBalances = productBalancesByTrader[traderKey] || {};
+    let totalValue = 0;
 
-    const totalValue = calculateWalletValueInBase({
-      baseBalance,
-      productBalances,
-      poolsByProduct,
-      feePct,
-    });
+    for (const [tokenAddress, balance] of Object.entries(balances)) {
+      const amount = Number(balance || 0);
+      if (amount <= 0) continue;
 
-    const pnl = totalValue - initialBaseBalance;
+      const rate = getRateToReference(tokenAddress, referenceToken, graph);
+      totalValue += amount * rate;
+    }
 
+    const pnl = totalValue - initialReferenceValue;
     const pnlPct =
-      initialBaseBalance > 0 ? (pnl / initialBaseBalance) * 100 : 0;
+      initialReferenceValue > 0 ? (pnl / initialReferenceValue) * 100 : 0;
 
     return {
       trader: traderAddress,
-      baseBalance,
-      productBalances,
+      balances,
       totalValue,
       pnl,
       pnlPct,
+      referenceToken,
     };
   });
 
-  ranking.sort((a, b) => b.pnl - a.pnl);
+  ranking.sort((a, b) => Number(b.pnl || 0) - Number(a.pnl || 0));
 
   return ranking;
 }

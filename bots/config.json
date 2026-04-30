@@ -10,92 +10,31 @@
     "noise": [1, 4],
     "shock": [2, 7],
     "trend": [1, 5],
-    "conservative": [3, 8],
-    "momentum": [1, 5],
-    "mean_reversion": [2, 6],
-    "market_maker": [1, 4],
-    "arbitrage": [1, 4]
+    "mean_reversion": [2, 6]
   },
   "noise": {
-    "min_cash": 2,
-    "max_buy_cash": 42,
-    "buy_fraction": 0.32,
-    "min_sell_balance": 0.002,
-    "sell_fraction": 0.8,
-    "crash_sell_probability": 0.06
+    "min_balance": 1,
+    "trade_fraction": 0.18,
+    "max_trade": 80,
+    "signal_probability": 0.35
   },
   "shock": {
-    "min_cash": 5,
-    "min_buy_amount": 1,
-    "max_buy_cash": 35,
-    "buy_fraction": 0.25,
-    "min_sell_balance": 0.003,
-    "sell_fraction": 0.82,
-    "pressure_sell_probability": 0.65,
-    "hard_dump_probability": 0.18,
-    "reload_buy_probability": 0.45
+    "min_balance": 1,
+    "sell_fraction": 0.45,
+    "max_trade": 120,
+    "pressure_probability": 0.65,
+    "hard_dump_probability": 0.18
   },
   "trend": {
-    "price_up_threshold": 0.003,
-    "price_down_threshold": 0.003,
-    "min_cash": 2,
-    "max_buy_cash": 65,
-    "buy_fraction": 0.42,
-    "min_sell_balance": 0.004,
-    "sell_fraction": 0.78
-  },
-  "conservative": {
-    "min_cash": 5,
-    "buy_probability": 0.62,
-    "max_buy_cash": 28,
-    "buy_fraction": 0.2,
-    "min_buy_amount": 1,
-    "min_sell_balance": 0.008,
-    "sell_price_threshold": 8.8,
-    "sell_fraction": 0.58
-  },
-  "momentum": {
-    "up_threshold": 0.003,
-    "down_threshold": 0.003,
-    "min_cash": 2,
-    "max_buy_cash": 70,
-    "buy_fraction": 0.44,
-    "min_sell_balance": 0.004,
-    "sell_fraction": 0.82
+    "threshold": 0.004,
+    "min_balance": 1,
+    "trade_fraction": 0.3,
+    "max_trade": 100
   },
   "mean_reversion": {
-    "drop_threshold": 0.005,
-    "rise_threshold": 0.005,
-    "min_cash": 2,
-    "max_buy_cash": 65,
-    "buy_fraction": 0.42,
-    "min_sell_balance": 0.004,
-    "sell_fraction": 0.78
-  },
-  "market_maker": {
-    "buy_below_pct": 0.003,
-    "sell_above_pct": 0.003,
-    "min_cash": 1,
-    "max_buy_cash": 50,
-    "buy_fraction": 0.32,
-    "min_buy_amount": 0.5,
-    "min_sell_balance": 0.0008,
-    "sell_fraction": 0.72,
-    "rebalance_probability": 0.45,
-    "stop_loss_pct": 0.06
-  },
-  "arbitrage": {
-    "min_spread_pct": 0.0015,
-    "cheap_threshold_pct": 0.001,
-    "expensive_threshold_pct": 0.001,
-    "min_cash": 1,
-    "max_buy_cash": 78,
-    "buy_fraction": 0.5,
-    "min_buy_amount": 0.5,
-    "min_sell_balance": 0.001,
-    "sell_fraction": 0.78,
-    "explore_probability": 0.42,
-    "momentum_exit_probability": 0.38,
-    "momentum_exit_pct": 0.003
+    "threshold": 0.006,
+    "min_balance": 1,
+    "trade_fraction": 0.28,
+    "max_trade": 90
   }
 }

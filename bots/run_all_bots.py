@@ -7,21 +7,17 @@ BOT_MODULES = [
     "bots.causes.noiseBot",
     "bots.causes.shockBot",
     "bots.causes.trendBot",
-    "bots.conservativeBot",
-    "bots.momentumBot",
-    "bots.meanReversionBot",
-    "bots.marketMakerBot",
-    "bots.arbitrageBot",
+    "bots.causes.meanReversionBot",
 ]
 
 processes = []
 
 
 def start_bots():
-    print("A iniciar todos os bots...\n")
+    print("A iniciar bots...\n")
 
     for module_name in BOT_MODULES:
-        print(f"Iniciando modulo: {module_name}")
+        print(f"Iniciando: {module_name}")
 
         process = subprocess.Popen(
             [sys.executable, "-m", module_name],
@@ -31,12 +27,12 @@ def start_bots():
 
         processes.append(process)
 
-    print("\nTodos os bots foram iniciados.")
-    print("Pressiona CTRL+C para parar todos.\n")
+    print("\nBots iniciados.")
+    print("CTRL+C para parar.\n")
 
 
 def stop_bots():
-    print("\nA parar todos os bots...")
+    print("\nA parar bots...")
 
     for process in processes:
         if process.poll() is None:
@@ -48,7 +44,7 @@ def stop_bots():
         if process.poll() is None:
             process.kill()
 
-    print("Todos os bots foram encerrados.")
+    print("Bots encerrados.")
 
 
 def handle_exit(signum, frame):

@@ -10,42 +10,32 @@ const BOT_KEYS = [
   "BOT_NOISE_PK",
   "BOT_SHOCK_PK",
   "BOT_TREND_PK",
-  "BOT_CONSERVATIVE_PK",
-  "BOT_MOMENTUM_PK",
   "BOT_MEAN_REVERSION_PK",
-  "BOT_MARKET_MAKER_PK",
-  "BOT_ARBITRAGE_PK",
 ];
 
 const BOT_NAMES = [
   "Bot de Ruído",
   "Bot de Choque",
   "Bot de Tendência",
-  "Bot Conservador",
-  "Bot de Momentum",
   "Bot de Reversão à Média",
-  "Bot Market Maker",
-  "Bot de Arbitragem",
 ];
 
 function parseEnv(content) {
   const env = {};
-  const lines = content.split(/\r?\n/);
 
-  for (const line of lines) {
+  for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
 
     const idx = trimmed.indexOf("=");
     if (idx === -1) continue;
 
-    const key = trimmed.slice(0, idx).trim();
-    const value = trimmed.slice(idx + 1).trim();
-    env[key] = value;
+    env[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim();
   }
 
   return env;
 }
+
 
 function buildEnv(env) {
   return Object.entries(env)
@@ -200,8 +190,8 @@ async function main() {
 
   const deployed = await runDeploy();
 
-  const botAddresses = accounts.slice(1, 9);
-  const botPrivateKeys = privateKeys.slice(1, 9);
+  const botAddresses = accounts.slice(1, 5);
+  const botPrivateKeys = privateKeys.slice(1, 5);
 
 const envValues = {
   RPC_URL: "http://127.0.0.1:8545",

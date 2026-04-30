@@ -4,49 +4,63 @@ import "dotenv/config";
 
 async function main() {
   const [owner] = await hre.ethers.getSigners();
-
   const data = JSON.parse(fs.readFileSync("traders.json", "utf-8"));
+
+  const parse = hre.ethers.parseUnits;
 
   const exchange = await hre.ethers.getContractAt(
     "CPMMExchange",
     process.env.EXCHANGE_ADDRESS
   );
 
-  const cash = await hre.ethers.getContractAt(
-    "MarketToken",
-    process.env.CASH_ADDRESS
-  );
-
-  const products = [
-    process.env.PROD1_ADDRESS,
-    process.env.PROD2_ADDRESS,
-    process.env.PROD3_ADDRESS,
-    process.env.PROD4_ADDRESS,
-    process.env.PROD5_ADDRESS,
+  const tokenAddresses = [
+    process.env.TKN1_ADDRESS,
+    process.env.TKN2_ADDRESS,
+    process.env.TKN3_ADDRESS,
+    process.env.TKN4_ADDRESS,
+    process.env.TKN5_ADDRESS,
   ];
 
-  const parse = hre.ethers.parseUnits;
+  const tokens = [];
 
-  const INITIAL_CASH_BALANCE = parse("1000", 18);
-  const INITIAL_PRODUCT_BALANCE = parse("15", 18);
+  for (const address of tokenAddresses) {
+    tokens.push(await hre.ethers.getContractAt("MarketToken", address));
+  }
 
-  await cash.mint(owner.address, parse("1000000", 18));
+  await exchange.registerTokens(tokenAddresses);
 
-  for (const productAddress of products) {
-    const exists = await exchange.poolExists(productAddress);
+  const OWNER_MINT = parse("1000000", 18);
+  const POOL_LIQUIDITY = parse("10000", 18);
+  const TRADER_INITIAL_BALANCE = parse("1000", 18);
 
-    if (!exists) {
-      const token = await hre.ethers.getContractAt("MarketToken", productAddress);
+  for (const token of tokens) {
+    await token.mint(owner.address, OWNER_MINT);
+    await token.approve(process.env.EXCHANGE_ADDRESS, OWNER_MINT);
+  }
 
-      await token.mint(owner.address, parse("100000", 18));
-      await cash.approve(process.env.EXCHANGE_ADDRESS, parse("1000000", 18));
-      await token.approve(process.env.EXCHANGE_ADDRESS, parse("100000", 18));
+  const pairs = [
+    [tokens[0], tokens[1]],
+    [tokens[1], tokens[2]],
+    [tokens[2], tokens[3]],
+    [tokens[3], tokens[4]],
+    [tokens[4], tokens[0]],
+  ];
 
+  for (const [a, b] of pairs) {
+    const aAddress = await a.getAddress();
+    const bAddress = await b.getAddress();
+
+    const poolInfo = await exchange.getPoolByTokens(aAddress, bAddress);
+
+    if (!poolInfo.exists) {
       await exchange.createPool(
-        productAddress,
-        parse("10000", 18),
-        parse("1000", 18)
+        aAddress,
+        bAddress,
+        POOL_LIQUIDITY,
+        POOL_LIQUIDITY
       );
+
+      console.log(`Pool created: ${await a.symbol()}/${await b.symbol()}`);
     }
   }
 
@@ -55,54 +69,11 @@ async function main() {
   await exchange.registerTraders(traderAddresses);
 
   for (const traderAddress of traderAddresses) {
-    await cash.mint(traderAddress, INITIAL_CASH_BALANCE);
-
-    for (const productAddress of products) {
-      const token = await hre.ethers.getContractAt("MarketToken", productAddress);
-      await token.mint(traderAddress, INITIAL_PRODUCT_BALANCE);
+    for (const token of tokens) {
+      await token.mint(traderAddress, TRADER_INITIAL_BALANCE);
     }
 
-    console.log(
-      `Funded trader ${traderAddress}: 1000 CASH + 15 units of each product`
-    );
-  }
-
-  const extAddresses = [];
-
-  for (let i = 0; i < 20; i++) {
-    const pk = process.env[`EXT_BOT_${i}_PK`];
-    if (!pk) break;
-
-    const addr = new hre.ethers.Wallet(pk).address;
-    extAddresses.push(addr);
-  }
-
-  if (extAddresses.length > 0) {
-    const unregistered = [];
-
-    for (const addr of extAddresses) {
-      const already = await exchange.isTrader(addr);
-      if (!already) unregistered.push(addr);
-    }
-
-    if (unregistered.length > 0) {
-      await exchange.registerTraders(unregistered);
-    }
-
-    for (const addr of extAddresses) {
-      await cash.mint(addr, INITIAL_CASH_BALANCE);
-
-      for (const productAddress of products) {
-        const token = await hre.ethers.getContractAt("MarketToken", productAddress);
-        await token.mint(addr, INITIAL_PRODUCT_BALANCE);
-      }
-
-      console.log(
-        `Funded external bot ${addr}: 1000 CASH + 15 units of each product`
-      );
-    }
-
-    console.log(`External bot slots: ${extAddresses.length} registered/funded`);
+    console.log(`Funded trader ${traderAddress}: 1000 units of each token`);
   }
 
   console.log("Setup done");

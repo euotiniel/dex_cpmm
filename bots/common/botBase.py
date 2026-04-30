@@ -3,31 +3,52 @@ import time
 from abc import ABC, abstractmethod
 
 from bots.common.dexClient import DexClient
-from bots.common.config import CONFIG as _CONFIG
+from bots.common.config import CONFIG
 
 
 class BaseBot(ABC):
-    def __init__(self, private_key: str, name: str, interval_key: str = "noise"):
+    def __init__(self, private_key: str, name: str, interval_key: str):
         self.client = DexClient(private_key)
         self.name = name
-        _iv = _CONFIG["intervals"].get(interval_key, [2, 5])
-        self._min_interval = _iv[0]
-        self._max_interval = _iv[1]
 
-    def random_product(self) -> str:
-        return random.choice(self.client.product_addresses)
+        interval = CONFIG["intervals"].get(interval_key, [2, 5])
+        self._min_interval = interval[0]
+        self._max_interval = interval[1]
 
-    def cash_balance(self) -> float:
-        return self.client.get_cash_balance()
-
-    def product_balance(self, product_address: str) -> float:
-        return self.client.get_product_balance(product_address)
+    def log(self, message: str):
+        print(f"[{self.name}] {message}", flush=True)
 
     def sleep_random(self):
         time.sleep(random.uniform(self._min_interval, self._max_interval))
 
-    def log(self, message: str):
-        print(f"[{self.name}] {message}", flush=True)
+    def pools(self):
+        return self.client.get_all_pools()
+
+    def random_pool(self):
+        pools = self.pools()
+        if not pools:
+            return None
+        return random.choice(pools)
+
+    def balance(self, token_address: str) -> float:
+        return self.client.get_balance(token_address)
+
+    def swap(self, token_in: str, token_out: str, amount: float):
+        return self.client.swap(token_in, token_out, amount)
+
+    def amount_from_balance(self, token_address: str, fraction: float, max_amount: float, min_amount: float):
+        balance = self.balance(token_address)
+
+        if balance <= min_amount:
+            return None
+
+        amount = min(max_amount, balance * fraction)
+        amount = round(amount * random.uniform(0.55, 1.15), 4)
+
+        if amount <= min_amount:
+            return None
+
+        return amount
 
     @abstractmethod
     def step(self):
@@ -37,11 +58,9 @@ class BaseBot(ABC):
         self.log(f"wallet={self.client.address}")
 
         while True:
-            # Wait for the next competition (handles NOT_STARTED and ENDED)
             self.client.wait_until_active()
             self.log("competition active — starting strategy")
 
-            # Trade loop: runs until this competition ends
             while True:
                 try:
                     status = self.client.get_competition_status()
@@ -51,12 +70,12 @@ class BaseBot(ABC):
                     continue
 
                 if status["status"] != 1:
-                    self.log("competition ended — waiting for next")
+                    self.log("competition ended — waiting")
                     break
 
                 try:
                     self.step()
-                except Exception as error:
-                    self.log(f"step error: {error}")
+                except Exception as e:
+                    self.log(f"step error: {e}")
 
                 self.sleep_random()
