@@ -143,14 +143,13 @@ function runDeploy() {
       stdoutBuffer += text;
 
       const patterns = {
-        CASH_ADDRESS: /CASH:\s+(0x[a-fA-F0-9]{40})/,
-        EXCHANGE_ADDRESS: /EXCHANGE:\s+(0x[a-fA-F0-9]{40})/,
-        PROD1_ADDRESS: /PROD1:\s+(0x[a-fA-F0-9]{40})/,
-        PROD2_ADDRESS: /PROD2:\s+(0x[a-fA-F0-9]{40})/,
-        PROD3_ADDRESS: /PROD3:\s+(0x[a-fA-F0-9]{40})/,
-        PROD4_ADDRESS: /PROD4:\s+(0x[a-fA-F0-9]{40})/,
-        PROD5_ADDRESS: /PROD5:\s+(0x[a-fA-F0-9]{40})/,
-      };
+  EXCHANGE_ADDRESS: /EXCHANGE:\s+(0x[a-fA-F0-9]{40})/,
+  TKN1_ADDRESS: /TKN1:\s+(0x[a-fA-F0-9]{40})/,
+  TKN2_ADDRESS: /TKN2:\s+(0x[a-fA-F0-9]{40})/,
+  TKN3_ADDRESS: /TKN3:\s+(0x[a-fA-F0-9]{40})/,
+  TKN4_ADDRESS: /TKN4:\s+(0x[a-fA-F0-9]{40})/,
+  TKN5_ADDRESS: /TKN5:\s+(0x[a-fA-F0-9]{40})/,
+};
 
       for (const [key, regex] of Object.entries(patterns)) {
         const match = stdoutBuffer.match(regex);
@@ -196,13 +195,13 @@ async function main() {
 const envValues = {
   RPC_URL: "http://127.0.0.1:8545",
 
-  // INITIAL_BASE_BALANCE = valor inicial total usado no cálculo do PnL
-  // Fórmula:
-  // CASH inicial + (tokens por produto × número de produtos × preço inicial)
-  // Exemplo atual:
-  // 1000 + (15 × 5 × 10) = 1750
-  INITIAL_BASE_BALANCE: "1750",
+  // Valor inicial usado no ranking.
+  // Cada bot começa com 1000 unidades de cada um dos 5 tokens.
+  // Como a referência inicial é TKN1, o valor estimado inicial é:
+  // 1000 TKN1 + 1000 TKN2 + 1000 TKN3 + 1000 TKN4 + 1000 TKN5 ~= 5000 TKN1
+  INITIAL_REFERENCE_VALUE: "5000",
 
+  REFERENCE_TOKEN_SYMBOL: "TKN1",
   TRADERS_FILE: "traders.json",
   PORT: "3001",
   ...deployed,

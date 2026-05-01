@@ -1246,3 +1246,135 @@ tbody td {
     min-width: 920px;
   }
 }
+
+.app {
+  max-width: 1480px;
+  padding-top: 34px;
+}
+
+.header {
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+h1 {
+  font-size: 48px;
+}
+
+.subtitle {
+  font-size: 16px;
+}
+
+.ctrl-panel,
+.metric,
+.panel {
+  background: rgba(17, 22, 29, 0.92);
+  border-color: rgba(80, 96, 116, 0.42);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18);
+}
+
+.metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.market-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.layout {
+  display: block;
+}
+
+.markets-panel {
+  margin-bottom: 14px;
+}
+
+.middle-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(340px, 0.8fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.leaderboard-panel,
+.trades-panel {
+  min-height: 500px;
+}
+
+.leaderboard-panel .table-wrapper {
+  max-height: 430px;
+  overflow: auto;
+}
+
+.trades-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.trades-panel .trades-list {
+  flex: 1;
+  max-height: 430px;
+}
+
+.charts-section {
+  margin-top: 14px;
+}
+
+#chart-container {
+  height: 430px;
+}
+
+.market-card {
+  min-height: 122px;
+}
+
+tbody tr:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 2;
+}
+
+.table-wrapper::-webkit-scrollbar,
+.trades-list::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb,
+.trades-list::-webkit-scrollbar-thumb {
+  background: #3b4656;
+  border-radius: 999px;
+}
+
+@media (max-width: 1200px) {
+  .market-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .middle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .leaderboard-panel .table-wrapper {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .market-grid {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 38px;
+  }
+}

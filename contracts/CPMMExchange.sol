@@ -5,8 +5,11 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract CPMMExchange is Ownable {
-    uint256 public constant FEE_BPS = 30;
+    uint256 public constant BASE_FEE_BPS = 30;
     uint256 public constant BPS_DENOMINATOR = 10_000;
+
+    uint256 public constant COOLDOWN_SECONDS = 2;
+    uint256 public constant MAX_PRICE_IMPACT_BPS = 800;
 
     enum CompetitionStatus {
         NOT_STARTED,
@@ -31,8 +34,14 @@ contract CPMMExchange is Ownable {
 
     mapping(address => bool) public supportedToken;
     mapping(bytes32 => Pool) public pools;
+
     mapping(address => bool) public isTrader;
+    mapping(address => uint256) public traderTradeCount;
+    mapping(address => uint256) public traderLastTradeAt;
+    mapping(address => uint256) public traderFeesPaid;
+
     uint256 public traderCount;
+    uint256 public totalFeesPaid;
 
     event PoolCreated(
         bytes32 indexed poolId,
@@ -53,6 +62,14 @@ contract CPMMExchange is Ownable {
         uint256 newReserveOut
     );
 
+    event FeeCharged(
+        address indexed trader,
+        bytes32 indexed poolId,
+        address indexed tokenIn,
+        uint256 feeBps,
+        uint256 feeAmount
+    );
+
     event CompetitionStarted(
         uint256 indexed startTime,
         uint256 indexed endTime,
@@ -69,6 +86,7 @@ contract CPMMExchange is Ownable {
     constructor(address initialOwner) Ownable(initialOwner) {}
 
     function registerTokens(address[] calldata tokenList) external onlyOwner {
+        require(tokens.length == 0, "Tokens already registered");
         require(tokenList.length == 5, "Exactly 5 tokens required");
 
         for (uint256 i = 0; i < tokenList.length; i++) {
@@ -167,19 +185,49 @@ contract CPMMExchange is Ownable {
         return (p.exists, id, p.token0, p.token1, p.reserve0, p.reserve1);
     }
 
+    function getTraderFeeBps(address trader) public view returns (uint256) {
+        uint256 count = traderTradeCount[trader];
+
+        if (count >= 150) return 150;
+        if (count >= 100) return 110;
+        if (count >= 60) return 80;
+        if (count >= 30) return 50;
+
+        return BASE_FEE_BPS;
+    }
+
+    function getPriceImpactBps(
+        uint256 amountIn,
+        uint256 reserveIn
+    ) public pure returns (uint256) {
+        require(reserveIn > 0, "Invalid reserve");
+
+        return (amountIn * BPS_DENOMINATOR) / (reserveIn + amountIn);
+    }
+
+    function getAmountOutWithFee(
+        uint256 amountIn,
+        uint256 reserveIn,
+        uint256 reserveOut,
+        uint256 feeBps
+    ) public pure returns (uint256) {
+        require(amountIn > 0, "Invalid amount");
+        require(reserveIn > 0 && reserveOut > 0, "Invalid reserves");
+        require(feeBps < BPS_DENOMINATOR, "Invalid fee");
+
+        uint256 amountInAfterFee = amountIn * (BPS_DENOMINATOR - feeBps);
+        uint256 numerator = amountInAfterFee * reserveOut;
+        uint256 denominator = (reserveIn * BPS_DENOMINATOR) + amountInAfterFee;
+
+        return numerator / denominator;
+    }
+
     function getAmountOut(
         uint256 amountIn,
         uint256 reserveIn,
         uint256 reserveOut
     ) public pure returns (uint256) {
-        require(amountIn > 0, "Invalid amount");
-        require(reserveIn > 0 && reserveOut > 0, "Invalid reserves");
-
-        uint256 amountInAfterFee = amountIn * (BPS_DENOMINATOR - FEE_BPS);
-        uint256 numerator = amountInAfterFee * reserveOut;
-        uint256 denominator = (reserveIn * BPS_DENOMINATOR) + amountInAfterFee;
-
-        return numerator / denominator;
+        return getAmountOutWithFee(amountIn, reserveIn, reserveOut, BASE_FEE_BPS);
     }
 
     function quote(
@@ -203,6 +251,34 @@ contract CPMMExchange is Ownable {
         revert("Invalid pair");
     }
 
+    function quoteForTrader(
+        address trader,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn
+    ) external view returns (uint256 amountOut, uint256 feeBps, uint256 priceImpactBps) {
+        bytes32 id = _poolId(tokenIn, tokenOut);
+        Pool memory p = pools[id];
+
+        require(p.exists, "Pool does not exist");
+
+        feeBps = getTraderFeeBps(trader);
+
+        if (tokenIn == p.token0 && tokenOut == p.token1) {
+            priceImpactBps = getPriceImpactBps(amountIn, p.reserve0);
+            amountOut = getAmountOutWithFee(amountIn, p.reserve0, p.reserve1, feeBps);
+            return (amountOut, feeBps, priceImpactBps);
+        }
+
+        if (tokenIn == p.token1 && tokenOut == p.token0) {
+            priceImpactBps = getPriceImpactBps(amountIn, p.reserve1);
+            amountOut = getAmountOutWithFee(amountIn, p.reserve1, p.reserve0, feeBps);
+            return (amountOut, feeBps, priceImpactBps);
+        }
+
+        revert("Invalid pair");
+    }
+
     function swap(
         address tokenIn,
         address tokenOut,
@@ -211,6 +287,11 @@ contract CPMMExchange is Ownable {
     ) external onlyActiveCompetition returns (uint256 amountOut) {
         require(isTrader[msg.sender], "Not registered trader");
         require(amountIn > 0, "Invalid amount");
+
+        require(
+            block.timestamp >= traderLastTradeAt[msg.sender] + COOLDOWN_SECONDS,
+            "Trader cooldown active"
+        );
 
         bytes32 id = _poolId(tokenIn, tokenOut);
         Pool storage p = pools[id];
@@ -225,13 +306,24 @@ contract CPMMExchange is Ownable {
         uint256 reserveIn = normalDirection ? p.reserve0 : p.reserve1;
         uint256 reserveOut = normalDirection ? p.reserve1 : p.reserve0;
 
-        amountOut = getAmountOut(amountIn, reserveIn, reserveOut);
+        uint256 impactBps = getPriceImpactBps(amountIn, reserveIn);
+        require(impactBps <= MAX_PRICE_IMPACT_BPS, "Price impact too high");
+
+        uint256 feeBps = getTraderFeeBps(msg.sender);
+        uint256 feeAmount = (amountIn * feeBps) / BPS_DENOMINATOR;
+
+        amountOut = getAmountOutWithFee(amountIn, reserveIn, reserveOut, feeBps);
 
         require(amountOut >= minAmountOut, "Slippage exceeded");
         require(amountOut < reserveOut, "Insufficient liquidity");
 
         IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
         IERC20(tokenOut).transfer(msg.sender, amountOut);
+
+        traderTradeCount[msg.sender] += 1;
+        traderLastTradeAt[msg.sender] = block.timestamp;
+        traderFeesPaid[msg.sender] += feeAmount;
+        totalFeesPaid += feeAmount;
 
         if (normalDirection) {
             p.reserve0 += amountIn;
@@ -262,10 +354,14 @@ contract CPMMExchange is Ownable {
                 p.reserve0
             );
         }
+
+        emit FeeCharged(msg.sender, id, tokenIn, feeBps, feeAmount);
     }
 
     function registerTraders(address[] calldata traders) external onlyOwner {
         for (uint256 i = 0; i < traders.length; i++) {
+            require(traders[i] != address(0), "Invalid trader");
+
             if (!isTrader[traders[i]]) {
                 isTrader[traders[i]] = true;
                 traderCount++;

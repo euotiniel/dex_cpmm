@@ -18,7 +18,8 @@
     "start:10m": "cross-env DURATION=600  hardhat run scripts/start.js --network localhost",
     "start:30m": "cross-env DURATION=1800 hardhat run scripts/start.js --network localhost",
     "bootstrap:local": "node scripts/bootstrap.js",
-    "test": "hardhat test"
+    "test": "hardhat test",
+    "ref": "node scripts/setReference.js"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.2",

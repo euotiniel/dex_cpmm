@@ -18,13 +18,14 @@
     "max_trade": 80,
     "signal_probability": 0.35
   },
-  "shock": {
-    "min_balance": 1,
-    "sell_fraction": 0.45,
-    "max_trade": 120,
-    "pressure_probability": 0.65,
-    "hard_dump_probability": 0.18
-  },
+"shock": {
+  "min_balance": 1,
+  "sell_fraction": 0.22,
+  "max_trade": 65,
+  "pressure_probability": 0.38,
+  "hard_dump_probability": 0.08,
+  "random_side_probability": 0.45
+},
   "trend": {
     "threshold": 0.004,
     "min_balance": 1,
