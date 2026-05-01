@@ -46,10 +46,12 @@ function resolvePythonCommand() {
         "python",
       ]
     : [
+        "/usr/bin/python3",
+        "python3",
+        "/usr/bin/python",
+        "python",
         path.join(ROOT, ".venv", "bin", "python"),
         path.join(ROOT, "venv", "bin", "python"),
-        "python3",
-        "python",
       ];
 
   for (const candidate of candidates) {
