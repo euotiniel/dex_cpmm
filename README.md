@@ -80,14 +80,27 @@ Antes de começar, garante que tens instalado:
 
 ## Instalação (só na primeira vez)
 
+#### 1. Clonar e entrar na pasta do projeto
+
 ```bash
-# 1. Clonar / entrar na pasta do projeto
-cd stockX
+git clone https://github.com/euotiniel/dex_cpmm/
 
-# 2. Instalar dependências JavaScript
+```
+Entre no diretório 
+
+```bash
+cd dex_cpmm
+```
+
+#### 2. Instalar dependências JavaScript
+
+```bash
 yarn install
+```
 
-# 3. Instalar dependências Python
+#### 3. Instalar dependências Python
+
+```bash
 pip install -r requirements.txt
 ```
 
@@ -256,7 +269,7 @@ x = reserva de CASH   y = reserva do token   k = constante
 
 **Preço implícito:** `price = x / y`
 
-**Taxa de swap:** 0.3% (30 bps)
+**Taxa de fee:** 0.3%
 
 **Cálculo do output:**
 ```
