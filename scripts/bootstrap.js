@@ -11,6 +11,7 @@ const BOT_KEYS = [
   "BOT_SHOCK_PK",
   "BOT_TREND_PK",
   "BOT_MEAN_REVERSION_PK",
+  //adiciona o nome aqui com underline
 ];
 
 const BOT_NAMES = [
@@ -18,7 +19,10 @@ const BOT_NAMES = [
   "Bot de Choque",
   "Bot de Tendência",
   "Bot de Reversão à Média",
+  //adiciona o nome aqui com espaço
 ];
+
+let numBots = BOT_NAMES.length;
 
 function parseEnv(content) {
   const env = {};
@@ -189,8 +193,8 @@ async function main() {
 
   const deployed = await runDeploy();
 
-  const botAddresses = accounts.slice(1, 5);
-  const botPrivateKeys = privateKeys.slice(1, 5);
+  const botAddresses = accounts.slice(1, numBots + 1);
+  const botPrivateKeys = privateKeys.slice(1, numBots + 1);
 
 const envValues = {
   RPC_URL: "http://127.0.0.1:8545",
