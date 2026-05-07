@@ -76,11 +76,20 @@ function getRateToReference(tokenAddress, referenceToken, graph) {
   return 0;
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function calculateGrade20FromPnlPct(pnlPct) {
+  return clamp(10 + Number(pnlPct || 0) * 2, 0, 20);
+}
+
 export function calculateRanking({
   traders,
   tokenBalancesByTrader,
   pools,
-  referenceToken,
+  tokens = [],
+  gradingWeights = {},
   initialReferenceValue = 5000,
 }) {
   const graph = buildConversionGraph(pools);
@@ -90,30 +99,57 @@ export function calculateRanking({
     const balances = tokenBalancesByTrader[traderKey] || {};
 
     let totalValue = 0;
+    const weightedBreakdown = {};
 
-    for (const [tokenAddress, balance] of Object.entries(balances)) {
-      const amount = Number(balance || 0);
-      if (amount <= 0) continue;
+    for (const targetToken of tokens) {
+      const weightPct = Number(gradingWeights[targetToken.symbol] || 0);
 
-      const rate = getRateToReference(tokenAddress, referenceToken, graph);
-      totalValue += amount * rate;
+      let valueInTargetToken = 0;
+
+      if (weightPct > 0) {
+        for (const [tokenAddress, balance] of Object.entries(balances)) {
+          const amount = Number(balance || 0);
+          if (amount <= 0) continue;
+
+          const rate = getRateToReference(
+            tokenAddress,
+            targetToken.address,
+            graph
+          );
+
+          valueInTargetToken += amount * rate;
+        }
+      }
+
+      const weightedValue = valueInTargetToken * (weightPct / 100);
+
+      weightedBreakdown[targetToken.symbol] = {
+        weightPct,
+        valueInToken: valueInTargetToken,
+        weightedValue,
+      };
+
+      totalValue += weightedValue;
     }
 
     const pnl = totalValue - initialReferenceValue;
     const pnlPct =
       initialReferenceValue > 0 ? (pnl / initialReferenceValue) * 100 : 0;
+    const grade20 = calculateGrade20FromPnlPct(pnlPct);
 
-    return {
-      trader: traderAddress,
-      balances,
-      totalValue,
-      pnl,
-      pnlPct,
-      referenceToken,
-    };
+return {
+  trader: traderAddress,
+  balances,
+  totalValue,
+  pnl,
+  pnlPct,
+  grade20,
+  gradingWeights,
+  weightedBreakdown,
+};
   });
 
-  ranking.sort((a, b) => Number(b.pnl || 0) - Number(a.pnl || 0));
+  ranking.sort((a, b) => Number(b.totalValue || 0) - Number(a.totalValue || 0));
 
   return ranking;
 }

@@ -29,6 +29,8 @@ const state = {
     symbol: null,
   },
 
+  gradingWeights: {},
+
   traders: [],
   traderStats: {},
   trades: [],
@@ -67,6 +69,9 @@ export function loadPersistence() {
     if (raw.volume && typeof raw.volume === "object") state.volume = raw.volume;
     if (raw.referenceToken) state.referenceToken = raw.referenceToken;
     if (raw.marketSignal) state.marketSignal = raw.marketSignal;
+    // if (raw.gradingWeights) {
+    //   state.gradingWeights = raw.gradingWeights;
+    // }
 
     console.log(`[persistence] Restored ${state.trades.length} trades from disk.`);
   } catch (e) {
@@ -79,15 +84,18 @@ export function savePersistence() {
     if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
     writeFileSync(
-      PERSISTENCE_FILE,
-      JSON.stringify({
-        trades: state.trades,
-        priceHistory: state.priceHistory,
-        volume: state.volume,
-        referenceToken: state.referenceToken,
-        marketSignal: state.marketSignal,
-        savedAt: Date.now(),
-      }),
+  PERSISTENCE_FILE,
+  JSON.stringify({
+    trades: state.trades,
+    priceHistory: state.priceHistory,
+    volume: state.volume,
+    referenceToken: state.referenceToken,
+
+    // gradingWeights: state.gradingWeights,
+
+    marketSignal: state.marketSignal,
+    savedAt: Date.now(),
+  }),
       "utf-8"
     );
   } catch (e) {
@@ -102,6 +110,14 @@ export function resetCompetitionData() {
   state.volume = {};
   state.priceHistory = {};
   state.traderStats = {};
+
+  if (state.tokens.length > 0) {
+    const equalWeight = 100 / state.tokens.length;
+
+    state.gradingWeights = Object.fromEntries(
+      state.tokens.map((token) => [token.symbol, equalWeight])
+    );
+  }
 
   for (const trader of state.traders) {
     const key = trader.address.toLowerCase();
@@ -144,6 +160,17 @@ export function setTokens(tokens) {
     };
   }
 
+    if (
+    tokens.length > 0 &&
+    Object.keys(state.gradingWeights).length === 0
+  ) {
+    const equalWeight = 100 / tokens.length;
+
+    state.gradingWeights = Object.fromEntries(
+      tokens.map((token) => [token.symbol, equalWeight])
+    );
+  }
+
   state.lastUpdatedAt = Date.now();
   emitter.emit("changed");
 }
@@ -154,6 +181,21 @@ export function setReferenceToken(token) {
     ...state.marketSignal,
     targetToken: token.address,
     targetSymbol: token.symbol,
+    updatedAt: Date.now(),
+  };
+
+  state.lastUpdatedAt = Date.now();
+  emitter.emit("changed");
+}
+
+export function setGradingWeights(weights) {
+  state.gradingWeights = weights;
+
+  state.marketSignal = {
+    mode: "WEIGHTS_CHANGED",
+    targetToken: null,
+    targetSymbol: null,
+    message: "Professor updated token grading weights",
     updatedAt: Date.now(),
   };
 

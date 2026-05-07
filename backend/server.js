@@ -16,8 +16,9 @@ import {
   setFairness,
   setExternalBots,
   resetCompetitionData,
-  setReferenceToken,
-  setMarketSignal,
+setReferenceToken,
+setGradingWeights,
+setMarketSignal,
 } from "./state.js";
 
 import {
@@ -168,6 +169,66 @@ app.post("/admin/reference-token", (req, res) => {
   res.json({
     ok: true,
     referenceToken: token.symbol,
+  });
+});
+
+app.get("/admin/grading-weights", (req, res) => {
+  const state = getState();
+
+  res.json({
+    ok: true,
+    weights: state.gradingWeights,
+  });
+});
+
+app.post("/admin/grading-weights", async (req, res) => {
+  const { weights } = req.body || {};
+  const state = getState();
+
+  if (state.status?.competitionStatus === "ENDED") {
+  return res.status(403).json({
+    error: "Competition ended. Weights can no longer be changed.",
+  });
+}
+
+  if (!weights || typeof weights !== "object") {
+    return res.status(400).json({
+      error: "weights object required",
+    });
+  }
+
+  const validSymbols = state.tokens.map((token) => token.symbol);
+  const normalizedWeights = {};
+
+  for (const symbol of validSymbols) {
+    const value = Number(weights[symbol] ?? 0);
+
+    if (!Number.isFinite(value) || value < 0) {
+      return res.status(400).json({
+        error: `Invalid weight for ${symbol}`,
+      });
+    }
+
+    normalizedWeights[symbol] = value;
+  }
+
+  const total = Object.values(normalizedWeights).reduce(
+    (sum, value) => sum + value,
+    0
+  );
+
+  if (Math.abs(total - 100) > 0.0001) {
+    return res.status(400).json({
+      error: `Weights must sum 100. Current sum: ${total}`,
+    });
+  }
+
+  setGradingWeights(normalizedWeights);
+  await refreshAll();
+
+  res.json({
+    ok: true,
+    weights: normalizedWeights,
   });
 });
 

@@ -1,0 +1,91 @@
+.professor-panel {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.weights-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.weights-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.weight-card {
+  background: var(--panel-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.weight-card strong {
+  display: block;
+  font-size: 16px;
+}
+
+.weight-card span {
+  display: block;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.weight-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.weight-input-row input {
+  width: 110px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: monospace;
+  font-size: 15px;
+  padding: 8px 10px;
+  outline: none;
+  text-align: right;
+}
+
+.weight-input-row input:focus {
+  border-color: var(--muted-2);
+}
+
+.weights-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.weights-actions .cbtn {
+  width: auto;
+}
+
+.weights-total-ok {
+  color: var(--green);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.weights-total-error {
+  color: var(--red);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.weights-message.success {
+  color: var(--green);
+}
+
+.weights-message.error {
+  color: var(--red);
+}

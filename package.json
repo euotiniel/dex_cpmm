@@ -18,6 +18,7 @@
     "start:10m": "cross-env DURATION=600  hardhat run scripts/start.js --network localhost",
     "start:30m": "cross-env DURATION=1800 hardhat run scripts/start.js --network localhost",
     "bootstrap:local": "node scripts/bootstrap.js",
+    "weights": "node scripts/setWeights.js",
     "test": "hardhat test",
     "ref": "node scripts/setReference.js"
   },

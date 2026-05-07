@@ -1208,6 +1208,7 @@ tbody td {
 
 .token-balance-cell strong {
   display: block;
+  display:  inline;
   color: var(--text);
   font-weight: 600;
 }
@@ -1377,4 +1378,57 @@ thead th {
   h1 {
     font-size: 38px;
   }
+}
+
+#total-volume {
+  font-size: 13px;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.grade-cell strong {
+  display: block;
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.grade-cell span {
+  display: block;
+  color: var(--muted-2);
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.token-balance-cell strong {
+  display: block;
+  color: var(--text);
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.token-balance-cell span {
+  display: block;
+  color: var(--muted-2);
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.grade-cell.grade-excellent strong {
+  color: #22c55e;
+}
+
+.grade-cell.grade-good strong {
+  color: #84cc16;
+}
+
+.grade-cell.grade-medium strong {
+  color: #facc15;
+}
+
+.grade-cell.grade-low strong {
+  color: #f97316;
+}
+
+.grade-cell.grade-bad strong {
+  color: #ef4444;
 }

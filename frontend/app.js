@@ -27,12 +27,23 @@ let eventSource = null;
 let reconnectTimer = null;
 
 function formatNumber(value, digits = 4) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  if (value === null || value === undefined || Number.isNaN(Number(value)))
+    return "-";
 
   return Number(value).toLocaleString("pt-PT", {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits,
   });
+}
+
+function formatWeights(weights = {}) {
+  const entries = Object.entries(weights);
+
+  if (!entries.length) return "--";
+
+  return entries
+    .map(([symbol, value]) => `${symbol}:${formatNumber(value, 0)}%`)
+    .join(" · ");
 }
 
 function shortAddress(address) {
@@ -150,15 +161,15 @@ function renderStats(state) {
   const trades = state.trades || [];
   const ranking = state.ranking || [];
   const pools = poolsArray(state);
-  const ref = state.referenceToken?.symbol || "--";
+  const weights = state.gradingWeights || {};
 
   totalTradesEl.textContent = trades.length;
   activeBotsEl.textContent = ranking.length;
   totalMarketsEl.textContent = pools.length;
-  totalVolumeEl.textContent = ref;
+  totalVolumeEl.textContent = formatWeights(weights);
 }
 
-function renderProducts(tokens = [], pools = {}, referenceToken = {}) {
+function renderProducts(tokens = [], pools = {}, gradingWeights = {}) {
   const poolList = Object.values(pools || {});
 
   if (!poolList.length) {
@@ -173,17 +184,12 @@ function renderProducts(tokens = [], pools = {}, referenceToken = {}) {
       const price01 = reserve0 > 0 ? reserve1 / reserve0 : 0;
       const price10 = reserve1 > 0 ? reserve0 / reserve1 : 0;
 
-      const isRef0 =
-        referenceToken?.address &&
-        pool.token0?.toLowerCase() === referenceToken.address.toLowerCase();
-
-      const isRef1 =
-        referenceToken?.address &&
-        pool.token1?.toLowerCase() === referenceToken.address.toLowerCase();
+      const weight0 = Number(gradingWeights[pool.symbol0] || 0);
+      const weight1 = Number(gradingWeights[pool.symbol1] || 0);
 
       const refBadge =
-        isRef0 || isRef1
-          ? `<span class="price-change up">REF</span>`
+        weight0 > 0 || weight1 > 0
+          ? `<span class="price-change up">${formatNumber(Math.max(weight0, weight1), 0)}%</span>`
           : "";
 
       return `
@@ -195,12 +201,12 @@ function renderProducts(tokens = [], pools = {}, referenceToken = {}) {
 
           <div class="market-data">
             <div class="market-line">
-              <span>${pool.symbol0} reserve</span>
+              <span>${pool.symbol0} reserva</span>
               <strong>${formatNumber(reserve0, 2)}</strong>
             </div>
 
             <div class="market-line">
-              <span>${pool.symbol1} reserve</span>
+              <span>${pool.symbol1} reserva</span>
               <strong>${formatNumber(reserve1, 2)}</strong>
             </div>
 
@@ -269,55 +275,117 @@ function getTraderTradeStats(trades = [], traderAddress) {
   return stats;
 }
 
-function renderRanking(ranking = [], competitionStatus, trades = [], tokens = [], referenceToken = {}) {
+function buildTokenTotalsBySymbol(ranking = [], tokens = []) {
+  const totals = {};
+
+  for (const token of tokens) {
+    totals[token.symbol] = 0;
+  }
+
+  for (const item of ranking) {
+    const balances = item.balances || {};
+
+    for (const token of tokens) {
+      const value = Number(balances[token.address.toLowerCase()] || 0);
+      totals[token.symbol] += value;
+    }
+  }
+
+  return totals;
+}
+
+function getGradeClass(grade20) {
+  const grade = Number(grade20 || 0);
+
+  if (grade >= 16) return "grade-excellent";
+  if (grade >= 12) return "grade-good";
+  if (grade >= 8) return "grade-medium";
+  if (grade >= 4) return "grade-low";
+
+  return "grade-bad";
+}
+
+function renderRanking(
+  ranking = [],
+  competitionStatus,
+  trades = [],
+  tokens = [],
+  gradingWeights = {},
+) {
   if (!ranking.length) {
-    rankingBody.innerHTML = `<tr><td colspan="10" class="empty">Ranking ainda vazio.</td></tr>`;
+    rankingBody.innerHTML = `<tr><td colspan="11" class="empty">Ranking ainda vazio.</td></tr>`;
     return;
   }
 
   const sorted = [...ranking].sort(
-    (a, b) => Number(b.pnl || 0) - Number(a.pnl || 0)
+    (a, b) => Number(b.totalValue || 0) - Number(a.totalValue || 0),
   );
+
+  const tokenTotals = buildTokenTotalsBySymbol(sorted, tokens);
 
   rankingBody.innerHTML = sorted
     .map((item, index) => {
       const pnl = Number(item.pnl || 0);
-      const pnlClass = pnl >= 0 ? "pnl-positive" : "pnl-negative";
       const pnlPct = Number(item.pnlPct || 0);
+      const grade20 = Number(item.grade20 || 0);
+      const gradeClass = getGradeClass(grade20);
+
+      const pnlClass = pnl >= 0 ? "pnl-positive" : "pnl-negative";
       const pnlSign = pnl >= 0 ? "+" : "";
       const isWinner = competitionStatus === "ENDED" && index === 0;
       const stats = getTraderTradeStats(trades, item.trader);
 
       const balances = item.balances || {};
 
-      const tokenCells = tokens.map((token) => {
-        const value = balances[token.address.toLowerCase()] || 0;
+      const tokenCells = tokens
+        .map((token) => {
+          const value = Number(balances[token.address.toLowerCase()] || 0);
+          const totalForToken = Number(tokenTotals[token.symbol] || 0);
 
-        return `
-          <td class="token-balance-cell">
-            ${formatNumber(value, 2)}
-          </td>
-        `;
-      }).join("");
+          const pctOfToken =
+            totalForToken > 0 ? (value / totalForToken) * 100 : 0;
+
+          return `
+            <td class="token-balance-cell">
+              <strong>${formatNumber(value, 2)}</strong>
+
+              <span style="font-size:11px;opacity:0.7;margin-left:4px;">
+                (${formatNumber(pctOfToken, 2)}%)
+              </span>
+            </td>
+          `;
+        })
+        .join("");
 
       return `
         <tr class="${isWinner ? "final-winner" : ""}">
-          <td><span class="rank">${index + 1}</span></td>
+          <td>
+            <span class="rank">${index + 1}</span>
+          </td>
 
           <td>
-            <span class="bot-name">${item.name || shortAddress(item.trader)}</span>
-            <span class="address">${shortAddress(item.trader)}</span>
+            <span class="bot-name">
+              ${item.name || shortAddress(item.trader)}
+            </span>
+
+            <span class="address">
+              ${shortAddress(item.trader)}
+            </span>
           </td>
+
+          <td class="grade-cell ${gradeClass}">
+  <strong>${formatNumber(grade20, 2)}</strong>
+</td>
 
           ${tokenCells}
 
           <td>
             ${formatNumber(item.totalValue, 4)}
-            <span class="address">${referenceToken.symbol || "REF"}</span>
           </td>
 
           <td class="${pnlClass}">
             ${pnlSign}${formatNumber(pnl, 2)}
+
             <span style="font-size:11px;opacity:0.7">
               (${pnlSign}${pnlPct.toFixed(1)}%)
             </span>
@@ -488,7 +556,8 @@ function populatePoolTabs(pools) {
   tabContainer.innerHTML = poolList
     .map((pool) => {
       const active =
-        String(pool.poolId).toLowerCase() === String(selectedPoolId).toLowerCase()
+        String(pool.poolId).toLowerCase() ===
+        String(selectedPoolId).toLowerCase()
           ? "active"
           : "";
 
@@ -514,7 +583,9 @@ function populatePoolTabs(pools) {
 
 function ensureChartPools(pools = {}) {
   const poolList = Object.values(pools || {});
-  const signature = poolList.map((p) => String(p.poolId).toLowerCase()).join("|");
+  const signature = poolList
+    .map((p) => String(p.poolId).toLowerCase())
+    .join("|");
 
   if (!signature) return;
 
@@ -597,9 +668,7 @@ function updateButtonStates(state) {
     (orchState === "IDLE" || orchState === "STOPPED");
 
   const canStop =
-    !isBusy &&
-    orchState === "RUNNING" &&
-    competitionStatus === "ACTIVE";
+    !isBusy && orchState === "RUNNING" && competitionStatus === "ACTIVE";
 
   const canRestartApp =
     !isBusy &&
@@ -646,14 +715,21 @@ function renderAll(state) {
   const ranking = state.ranking || [];
   const status = state.status || {};
   const referenceToken = state.referenceToken || {};
+  const gradingWeights = state.gradingWeights || {};
   const traderNameMap = buildTraderNameMap(ranking);
 
   renderControlPanel(state);
   renderStatus(status, state.lastUpdatedAt || Date.now());
   renderStats(state);
-  renderProducts(tokens, pools, referenceToken);
+  renderProducts(tokens, pools, gradingWeights);
   renderTrades(trades, traderNameMap);
-  renderRanking(ranking, status.competitionStatus, trades, tokens, referenceToken);
+  renderRanking(
+    ranking,
+    status.competitionStatus,
+    trades,
+    tokens,
+    gradingWeights,
+  );
 
   ensureChartPools(pools);
   updateChart(state);
@@ -734,7 +810,7 @@ function withLoading(btn, fn) {
 
 document.getElementById("btn-start-app")?.addEventListener("click", (e) => {
   withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/full-start", { duration: getDuration() })
+    apiPost("/orchestrate/full-start", { duration: getDuration() }),
   );
 });
 
@@ -743,12 +819,14 @@ document.getElementById("btn-stop-app")?.addEventListener("click", (e) => {
 });
 
 document.getElementById("btn-restart-app")?.addEventListener("click", (e) => {
-  const ok = confirm("Full reset? Isto vai redesplegar contratos e reiniciar a competição.");
+  const ok = confirm(
+    "Full reset? Isto vai redesplegar contratos e reiniciar a competição.",
+  );
 
   if (!ok) return;
 
   withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/restart-app", { duration: getDuration() })
+    apiPost("/orchestrate/restart-app", { duration: getDuration() }),
   );
 });
 

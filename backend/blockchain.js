@@ -250,16 +250,17 @@ function computeRanking() {
     process.env.INITIAL_REFERENCE_VALUE || "5000"
   );
 
-  const ranking = calculateRanking({
-    traders: trackedTraders,
-    tokenBalancesByTrader,
-    pools: state.pools,
-    referenceToken: state.referenceToken.address,
-    initialReferenceValue,
-  }).map((item) => ({
-    ...item,
-    name: traderMetaMap[norm(item.trader)]?.name || item.trader,
-  }));
+const ranking = calculateRanking({
+  traders: trackedTraders,
+  tokenBalancesByTrader,
+  pools: state.pools,
+  tokens: state.tokens,
+  gradingWeights: state.gradingWeights,
+  initialReferenceValue,
+}).map((item) => ({
+  ...item,
+  name: traderMetaMap[norm(item.trader)]?.name || item.trader,
+}));
 
   setRanking(ranking);
   return ranking;
