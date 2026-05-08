@@ -438,6 +438,16 @@ python bots/run_all_bots.py
 
 ---
 
+# Cadastrar bot na dex
+- Preencha o arquivo excell com os seus dados e deixe a coluna da chave em branco
+- Salve o arquivo com o mesmo nome que está lá e execute os comandos da dex
+- Verifiquei no .env da dex se a nova chave BOT_XXXXX Foi adicionada
+
+# Comunicação do BOT com a dex
+- Altere o arquivo .env do seu bot ou no codigo o ip
+- Nos arquivos .env dos bots, cole a chave que foi gerada na ultima linha
+- Reinicie o bot
+
 # Observações
 
 - o mercado não é determinístico
