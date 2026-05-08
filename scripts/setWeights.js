@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 const args = process.argv.slice(2);
 
 if (!args.length) {
@@ -30,7 +32,9 @@ if (Math.abs(total - 100) > 0.0001) {
 
 async function main() {
   try {
-    const res = await fetch(`${process.env.API_URL}:3001/admin/grading-weights`, {
+    const API_URL = (process.env.API_URL || "http://127.0.0.1:3001").replace(/\/$/, "");
+
+    const res = await fetch(`${API_URL}/admin/grading-weights`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -45,7 +49,7 @@ async function main() {
       process.exit(1);
     }
 
-    console.log("Pesos atualizados:");
+    console.log("Pesos atualizados on-chain:");
     console.table(data.weights);
   } catch (error) {
     console.log("Backend offline ou endpoint indisponível.");

@@ -1,4 +1,4 @@
-const API_BASE = "http://127.0.0.1:3001"; //alterar o 127.0.0.1 para o ip da maquina ou do servidor
+const API_BASE = window.location.origin;
 
 const form = document.getElementById("weights-form");
 const container = document.getElementById("weights-container");

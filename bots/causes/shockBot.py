@@ -27,9 +27,51 @@ class ShockBot(BaseBot, HumanBehavior):
 
         return self.initial_prices[key]
 
+    def find_target_by_weight(self):
+        weights = self.client.get_grading_weights()
+        pools = self.pools()
+
+        best = None
+        best_score = -999
+
+        for pool in pools:
+            w0 = weights.get(pool["symbol0"], 0)
+            w1 = weights.get(pool["symbol1"], 0)
+
+            if w0 == w1:
+                continue
+
+            if w0 > w1:
+                token_to_sell = pool["token1"]
+                token_to_buy = pool["token0"]
+                sell_symbol = pool["symbol1"]
+                buy_symbol = pool["symbol0"]
+                score = w0 - w1
+            else:
+                token_to_sell = pool["token0"]
+                token_to_buy = pool["token1"]
+                sell_symbol = pool["symbol0"]
+                buy_symbol = pool["symbol1"]
+                score = w1 - w0
+
+            if score > best_score:
+                best_score = score
+                best = {
+                    **pool,
+                    "score": score,
+                    "token_to_sell": token_to_sell,
+                    "token_to_buy": token_to_buy,
+                    "sell_symbol": sell_symbol,
+                    "buy_symbol": buy_symbol,
+                    "mode": "weight_pressure"
+                }
+
+        return best
+
     def find_top_gainer_pair(self):
         best = None
         best_gain = -999
+        weights = self.client.get_grading_weights()
 
         for pool in self.pools():
             initial = self._remember_initial(pool)
@@ -39,7 +81,15 @@ class ShockBot(BaseBot, HumanBehavior):
 
             gain = (pool["price01"] - initial) / initial
 
+            # Se token0 subiu, vender token0 para comprar token1 só faz sentido
+            # se token0 não tiver peso dominante.
+            w0 = weights.get(pool["symbol0"], 0)
+            w1 = weights.get(pool["symbol1"], 0)
+
             if gain > best_gain:
+                if w0 >= 60 and w0 > w1:
+                    continue
+
                 best_gain = gain
                 best = {
                     **pool,
@@ -55,11 +105,37 @@ class ShockBot(BaseBot, HumanBehavior):
 
     def random_target(self):
         pools = self.pools()
+        weights = self.client.get_grading_weights()
 
         if not pools:
             return None
 
         pool = random.choice(pools)
+
+        w0 = weights.get(pool["symbol0"], 0)
+        w1 = weights.get(pool["symbol1"], 0)
+
+        if w0 > w1 and random.random() < 0.7:
+            return {
+                **pool,
+                "gain": 0,
+                "token_to_sell": pool["token1"],
+                "token_to_buy": pool["token0"],
+                "sell_symbol": pool["symbol1"],
+                "buy_symbol": pool["symbol0"],
+                "mode": "random_weighted"
+            }
+
+        if w1 > w0 and random.random() < 0.7:
+            return {
+                **pool,
+                "gain": 0,
+                "token_to_sell": pool["token0"],
+                "token_to_buy": pool["token1"],
+                "sell_symbol": pool["symbol0"],
+                "buy_symbol": pool["symbol1"],
+                "mode": "random_weighted"
+            }
 
         if random.random() < 0.5:
             return {
@@ -83,13 +159,43 @@ class ShockBot(BaseBot, HumanBehavior):
         }
 
     def choose_target(self):
-        # Parte aleatória: evita que o ShockBot seja sempre "inteligente"
-        # e favorecido pelo sistema.
+        weights = self.client.get_grading_weights()
+
+        if weights:
+            max_weight = max(weights.values())
+
+            if max_weight >= 60 and random.random() < 0.75:
+                target = self.find_target_by_weight()
+                if target:
+                    return target
+
         if random.random() < _CFG.get("random_side_probability", 0.45):
             return self.random_target()
 
-        # Parte direcional: ainda permite choque sobre o ativo mais esticado.
-        return self.find_top_gainer_pair()
+        target = self.find_top_gainer_pair()
+        return target or self.find_target_by_weight() or self.random_target()
+
+    def sell_fraction_by_weight(self, sell_symbol, buy_symbol):
+        weights = self.client.get_grading_weights()
+
+        w_sell = weights.get(sell_symbol, 0)
+        w_buy = weights.get(buy_symbol, 0)
+
+        fraction = _CFG["sell_fraction"]
+
+        if w_buy >= 60:
+            fraction *= random.uniform(1.4, 2.0)
+
+        elif w_buy > w_sell:
+            fraction *= random.uniform(1.1, 1.45)
+
+        if w_sell >= 50:
+            fraction *= random.uniform(0.25, 0.55)
+
+        if w_sell == 0 and w_buy > 0:
+            fraction *= random.uniform(1.3, 1.8)
+
+        return fraction
 
     def step(self):
         self.update_mood()
@@ -104,16 +210,19 @@ class ShockBot(BaseBot, HumanBehavior):
             self.log("sem alvo de choque")
             return
 
-        sell_fraction = _CFG["sell_fraction"]
+        sell_fraction = self.sell_fraction_by_weight(
+            target["sell_symbol"],
+            target["buy_symbol"]
+        )
 
         if random.random() < _CFG["hard_dump_probability"]:
-            sell_fraction = random.uniform(0.45, 0.7)
+            sell_fraction *= random.uniform(1.4, 2.2)
 
         if self.mood == "impulsive":
-            sell_fraction *= random.uniform(1.05, 1.3)
+            sell_fraction *= random.uniform(1.05, 1.35)
 
         if self.mood == "fearful":
-            sell_fraction *= random.uniform(0.75, 1.05)
+            sell_fraction *= random.uniform(0.65, 0.95)
 
         amount = self.amount_from_balance(
             target["token_to_sell"],
@@ -128,16 +237,14 @@ class ShockBot(BaseBot, HumanBehavior):
 
         self.swap(target["token_to_sell"], target["token_to_buy"], amount)
 
-        if target["mode"] == "top_gainer":
-            self.log(
-                f"SHOCK SELL {amount} {target['sell_symbol']} -> {target['buy_symbol']} | "
-                f"gainer={target['gain']:+.2%} | mode=top_gainer | mood={self.mood}"
-            )
-        else:
-            self.log(
-                f"RANDOM SHOCK {amount} {target['sell_symbol']} -> {target['buy_symbol']} | "
-                f"mode=random | mood={self.mood}"
-            )
+        weights = self.client.get_grading_weights()
+
+        self.log(
+            f"SHOCK WEIGHTED {amount} {target['sell_symbol']}->{target['buy_symbol']} | "
+            f"mode={target['mode']} | "
+            f"peso {target['sell_symbol']}={weights.get(target['sell_symbol'], 0)}% / "
+            f"{target['buy_symbol']}={weights.get(target['buy_symbol'], 0)}% | mood={self.mood}"
+        )
 
 
 if __name__ == "__main__":
