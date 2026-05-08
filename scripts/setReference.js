@@ -18,7 +18,7 @@ if (!ALLOWED.includes(symbol)) {
 
 async function tryLiveUpdate() {
   try {
-    const res = await fetch("http://localhost:3001/admin/reference-token", {
+    const res = await fetch(`${process.env.API_URL}/admin/reference-token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

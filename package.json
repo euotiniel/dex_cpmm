@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node backend/server.js",
     "backend": "node backend/server.js",
-    "hhnode": "hardhat node",
+    "hhnode": "hardhat node --hostname 0.0.0.0",
     "compile": "hardhat compile",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
     "setup:local": "hardhat run scripts/setup.js --network localhost",
@@ -28,6 +28,7 @@
     "cross-env": "^10.1.0",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.2",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "express-rate-limit": "^8.4.1"
   },

@@ -419,6 +419,15 @@ yarn bootstrap:local
 yarn backend
 ```
 
+# Iniciar combate
+```bash
+yarn start:5m    # 5 minutos
+yarn start:10m   # 10 minutos
+yarn start:30m   # 30 minutos
+```
+```
+
+
 ---
 
 ## Bots

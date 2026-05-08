@@ -107,7 +107,7 @@ export async function reinitBlockchain() {
 }
 
 export async function initBlockchain() {
-  provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:8545");
+  provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 
   exchange = new ethers.Contract(
     process.env.EXCHANGE_ADDRESS,

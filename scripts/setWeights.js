@@ -30,7 +30,7 @@ if (Math.abs(total - 100) > 0.0001) {
 
 async function main() {
   try {
-    const res = await fetch("http://localhost:3001/admin/grading-weights", {
+    const res = await fetch(`${process.env.API_URL}:3001/admin/grading-weights`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

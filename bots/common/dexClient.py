@@ -126,7 +126,7 @@ class DexClient:
         if not private_key:
             raise RuntimeError("Private key ausente")
 
-        self.rpc_url = os.getenv("RPC_URL", "http://127.0.0.1:8545")
+        self.rpc_url = os.getenv("RPC_URL")
         self.exchange_address = Web3.to_checksum_address(os.getenv("EXCHANGE_ADDRESS"))
 
         self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
