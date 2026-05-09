@@ -13,6 +13,7 @@ const STATIC_BOT_KEYS = [
   "BOT_SHOCK_PK",
   "BOT_TREND_PK",
   "BOT_MEAN_REVERSION_PK",
+  // "BOT_OTONIEL_33039_PK",
   //adiciona o nome aqui com underline
 ];
 
@@ -21,6 +22,7 @@ const STATIC_BOT_NAMES = [
   "Bot de Choque",
   "Bot de Tendência",
   "Bot de Reversão à Média",
+  // "Otoniel Emanuel (33039)",
   //adiciona o nome aqui com espaço
 ];
 

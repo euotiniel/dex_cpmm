@@ -12,6 +12,14 @@ function norm(address) {
   return String(address || "").toLowerCase();
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function calculateGrade20FromScorePct(scorePct) {
+  return clamp((Number(scorePct || 0) / 100) * 20, 0, 20);
+}
+
 function buildConversionGraph(pools = {}) {
   const graph = {};
 
@@ -28,23 +36,16 @@ function buildConversionGraph(pools = {}) {
     if (!graph[token0]) graph[token0] = [];
     if (!graph[token1]) graph[token1] = [];
 
-    graph[token0].push({
-      to: token1,
-      rate: reserve1 / reserve0,
-    });
-
-    graph[token1].push({
-      to: token0,
-      rate: reserve0 / reserve1,
-    });
+    graph[token0].push({ to: token1, rate: reserve1 / reserve0 });
+    graph[token1].push({ to: token0, rate: reserve0 / reserve1 });
   }
 
   return graph;
 }
 
-function getRateToReference(tokenAddress, referenceToken, graph) {
+function getRateToReference(tokenAddress, referenceTokenAddress, graph) {
   const start = norm(tokenAddress);
-  const target = norm(referenceToken);
+  const target = norm(referenceTokenAddress);
 
   if (!start || !target) return 0;
   if (start === target) return 1;
@@ -61,27 +62,37 @@ function getRateToReference(tokenAddress, referenceToken, graph) {
 
       const nextRate = current.rate * edge.rate;
 
-      if (edge.to === target) {
-        return nextRate;
-      }
+      if (edge.to === target) return nextRate;
 
       visited.add(edge.to);
-      queue.push({
-        token: edge.to,
-        rate: nextRate,
-      });
+      queue.push({ token: edge.to, rate: nextRate });
     }
   }
 
   return 0;
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
+function calculatePortfolioValue({
+  balances,
+  graph,
+  referenceTokenAddress,
+}) {
+  let portfolioValue = 0;
 
-function calculateGrade20FromPnlPct(pnlPct) {
-  return clamp(10 + Number(pnlPct || 0) * 2, 0, 20);
+  for (const [tokenAddress, balance] of Object.entries(balances || {})) {
+    const amount = Number(balance || 0);
+    if (amount <= 0) continue;
+
+    const rate = getRateToReference(
+      tokenAddress,
+      referenceTokenAddress,
+      graph
+    );
+
+    portfolioValue += amount * rate;
+  }
+
+  return portfolioValue;
 }
 
 export function calculateRanking({
@@ -94,62 +105,90 @@ export function calculateRanking({
 }) {
   const graph = buildConversionGraph(pools);
 
+  const referenceToken =
+    tokens.find((token) => token.symbol === "TKN1") || tokens[0];
+
+  const referenceTokenAddress = referenceToken?.address;
+
+  const maxBalanceByToken = {};
+
+  for (const token of tokens) {
+    const tokenKey = norm(token.address);
+    let maxBalance = 0;
+
+    for (const traderAddress of traders) {
+      const traderKey = norm(traderAddress);
+      const balances = tokenBalancesByTrader[traderKey] || {};
+      const balance = Number(balances[tokenKey] || 0);
+
+      if (balance > maxBalance) maxBalance = balance;
+    }
+
+    maxBalanceByToken[tokenKey] = maxBalance;
+  }
+
   const ranking = traders.map((traderAddress) => {
     const traderKey = norm(traderAddress);
     const balances = tokenBalancesByTrader[traderKey] || {};
 
-    let totalValue = 0;
+    let scorePct = 0;
     const weightedBreakdown = {};
 
-    for (const targetToken of tokens) {
-      const weightPct = Number(gradingWeights[targetToken.symbol] || 0);
+    for (const token of tokens) {
+      const tokenKey = norm(token.address);
+      const balance = Number(balances[tokenKey] || 0);
+      const weightPct = Number(gradingWeights[token.symbol] || 0);
+      const maxBalance = Number(maxBalanceByToken[tokenKey] || 0);
 
-      let valueInTargetToken = 0;
+      const performancePct =
+        maxBalance > 0 ? (balance / maxBalance) * 100 : 0;
 
-      if (weightPct > 0) {
-        for (const [tokenAddress, balance] of Object.entries(balances)) {
-          const amount = Number(balance || 0);
-          if (amount <= 0) continue;
+      const weightedValue = performancePct * (weightPct / 100);
 
-          const rate = getRateToReference(
-            tokenAddress,
-            targetToken.address,
-            graph
-          );
-
-          valueInTargetToken += amount * rate;
-        }
-      }
-
-      const weightedValue = valueInTargetToken * (weightPct / 100);
-
-      weightedBreakdown[targetToken.symbol] = {
+      weightedBreakdown[token.symbol] = {
         weightPct,
-        valueInToken: valueInTargetToken,
+        balance,
+        maxBalance,
+        performancePct,
         weightedValue,
       };
 
-      totalValue += weightedValue;
+      scorePct += weightedValue;
     }
 
-    const pnl = totalValue - initialReferenceValue;
+    const grade20 = calculateGrade20FromScorePct(scorePct);
+
+    const portfolioValue = referenceTokenAddress
+      ? calculatePortfolioValue({
+          balances,
+          graph,
+          referenceTokenAddress,
+        })
+      : 0;
+
+    const pnl = portfolioValue - initialReferenceValue;
     const pnlPct =
       initialReferenceValue > 0 ? (pnl / initialReferenceValue) * 100 : 0;
-    const grade20 = calculateGrade20FromPnlPct(pnlPct);
 
-return {
-  trader: traderAddress,
-  balances,
-  totalValue,
-  pnl,
-  pnlPct,
-  grade20,
-  gradingWeights,
-  weightedBreakdown,
-};
+    return {
+      trader: traderAddress,
+      balances,
+
+      totalValue: scorePct,
+      scorePct,
+      grade20,
+
+      portfolioValue,
+      pnl,
+      pnlPct,
+      referenceToken: referenceToken?.symbol || null,
+
+      gradingWeights,
+      weightedBreakdown,
+    };
   });
 
-  ranking.sort((a, b) => Number(b.totalValue || 0) - Number(a.totalValue || 0));
+  ranking.sort((a, b) => Number(b.scorePct || 0) - Number(a.scorePct || 0));
 
   return ranking;
 }
