@@ -1,6 +1,87 @@
-.env
-__pycache__/
-*.pyc
+```gitignore
+# ─────────────────────────────────────────────
+# Node
+# ─────────────────────────────────────────────
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build
+dist/
+build/
+coverage/
+
+# Hardhat
 artifacts/
 cache/
+typechain/
+typechain-types/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Python logs/cache
+.pytest_cache/
+.mypy_cache/
+
+# Bot runtime
+bots/**/state.json
+bots/**/history.json
+
+# SQLite / local db
+*.sqlite
+*.db
+
+# Frontend
+.next/
+out/
+
+# Local blockchain
+hardhat-node/
+chain-data/
+
+# Generated exports
+exports/
+reports/
+
+# Optional uploads
+uploads/
+
+# Secrets
+private_keys.txt
+wallets.json
+mnemonic.txt
+
+# System monitor dumps
+system-logs/
+```
