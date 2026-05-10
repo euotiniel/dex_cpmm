@@ -382,7 +382,7 @@ function renderRanking(
           ${tokenCells}
 
           <td>
-            ${formatNumber(item.totalValue, 4)}
+            ${formatNumber(item.totalValue, 2)}
           </td>
 
           <td class="${pnlClass}">

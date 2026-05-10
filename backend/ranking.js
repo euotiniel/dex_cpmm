@@ -16,8 +16,8 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function calculateGrade20FromScorePct(scorePct) {
-  return clamp((Number(scorePct || 0) / 100) * 20, 0, 20);
+function calculateGrade20FromPnlPct(pnlPct) {
+  return clamp(10 + Number(pnlPct || 0) * 2, 0, 20);
 }
 
 function buildConversionGraph(pools = {}) {
@@ -95,6 +95,54 @@ function calculatePortfolioValue({
   return portfolioValue;
 }
 
+function calculateWeightedPortfolioValue({
+  balances,
+  tokens,
+  graph,
+  gradingWeights,
+  referenceTokenAddress,
+}) {
+  let weightedValue = 0;
+  const weightedBreakdown = {};
+  const tokenCount = Math.max(1, tokens.length);
+
+  for (const token of tokens) {
+    const tokenKey = norm(token.address);
+    const balance = Number(balances[tokenKey] || 0);
+    const weightPct = Number(gradingWeights[token.symbol] || 0);
+
+    const rate = getRateToReference(
+      token.address,
+      referenceTokenAddress,
+      graph
+    );
+
+    const marketValue = balance * rate;
+    const weightedMarketValue = marketValue * (weightPct / 100);
+
+    weightedBreakdown[token.symbol] = {
+      weightPct,
+      balance,
+      rateToReference: rate,
+      marketValue,
+      weightedMarketValue,
+    };
+
+    weightedValue += weightedMarketValue;
+  }
+
+  /*
+    Normalização:
+    - Sem isto, se TKN2 = 100%, o valor inicial seria 1000.
+    - Com isto, o valor inicial continua perto de 5000,
+      mantendo compatibilidade com INITIAL_REFERENCE_VALUE=5000.
+  */
+  return {
+    weightedPortfolioValue: weightedValue * tokenCount,
+    weightedBreakdown,
+  };
+}
+
 export function calculateRanking({
   traders,
   tokenBalancesByTrader,
@@ -110,53 +158,9 @@ export function calculateRanking({
 
   const referenceTokenAddress = referenceToken?.address;
 
-  const maxBalanceByToken = {};
-
-  for (const token of tokens) {
-    const tokenKey = norm(token.address);
-    let maxBalance = 0;
-
-    for (const traderAddress of traders) {
-      const traderKey = norm(traderAddress);
-      const balances = tokenBalancesByTrader[traderKey] || {};
-      const balance = Number(balances[tokenKey] || 0);
-
-      if (balance > maxBalance) maxBalance = balance;
-    }
-
-    maxBalanceByToken[tokenKey] = maxBalance;
-  }
-
   const ranking = traders.map((traderAddress) => {
     const traderKey = norm(traderAddress);
     const balances = tokenBalancesByTrader[traderKey] || {};
-
-    let scorePct = 0;
-    const weightedBreakdown = {};
-
-    for (const token of tokens) {
-      const tokenKey = norm(token.address);
-      const balance = Number(balances[tokenKey] || 0);
-      const weightPct = Number(gradingWeights[token.symbol] || 0);
-      const maxBalance = Number(maxBalanceByToken[tokenKey] || 0);
-
-      const performancePct =
-        maxBalance > 0 ? (balance / maxBalance) * 100 : 0;
-
-      const weightedValue = performancePct * (weightPct / 100);
-
-      weightedBreakdown[token.symbol] = {
-        weightPct,
-        balance,
-        maxBalance,
-        performancePct,
-        weightedValue,
-      };
-
-      scorePct += weightedValue;
-    }
-
-    const grade20 = calculateGrade20FromScorePct(scorePct);
 
     const portfolioValue = referenceTokenAddress
       ? calculatePortfolioValue({
@@ -166,29 +170,52 @@ export function calculateRanking({
         })
       : 0;
 
-    const pnl = portfolioValue - initialReferenceValue;
+    const { weightedPortfolioValue, weightedBreakdown } = referenceTokenAddress
+      ? calculateWeightedPortfolioValue({
+          balances,
+          tokens,
+          graph,
+          gradingWeights,
+          referenceTokenAddress,
+        })
+      : {
+          weightedPortfolioValue: 0,
+          weightedBreakdown: {},
+        };
+
+    const pnl = weightedPortfolioValue - initialReferenceValue;
+
     const pnlPct =
-      initialReferenceValue > 0 ? (pnl / initialReferenceValue) * 100 : 0;
+      initialReferenceValue > 0
+        ? (pnl / initialReferenceValue) * 100
+        : 0;
+
+    const grade20 = calculateGrade20FromPnlPct(pnlPct);
 
     return {
       trader: traderAddress,
       balances,
 
-      totalValue: scorePct,
-      scorePct,
-      grade20,
+      // Mantém compatibilidade com UI/fairness
+      totalValue: weightedPortfolioValue,
 
+      // PnL real ponderado pelos pesos do professor
       portfolioValue,
+      weightedPortfolioValue,
       pnl,
       pnlPct,
-      referenceToken: referenceToken?.symbol || null,
+      grade20,
 
+      // Mantido para não quebrar UI antiga, mas agora é PnL%
+      scorePct: pnlPct,
+
+      referenceToken: referenceToken?.symbol || null,
       gradingWeights,
       weightedBreakdown,
     };
   });
 
-  ranking.sort((a, b) => Number(b.scorePct || 0) - Number(a.scorePct || 0));
+  ranking.sort((a, b) => Number(b.pnl || 0) - Number(a.pnl || 0));
 
   return ranking;
 }
