@@ -6,6 +6,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
+import XLSX from "xlsx";
+
 
 import {
   emitter,
@@ -43,6 +45,8 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
+
+
 
 const app = express();
 app.use(cors());
@@ -102,6 +106,19 @@ function safe(res, fn) {
   }
 }
 
+
+/**
+Criar rota para chaves
+ */
+
+const workbook = XLSX.readFile("PlanilhaChaves.xlsx");
+
+const sheetName = workbook.SheetNames[0];
+const sheet = workbook.Sheets[sheetName];
+
+const dados = XLSX.utils.sheet_to_json(sheet);
+
+
 /* ===========================
    READ ROUTES
 =========================== */
@@ -114,6 +131,22 @@ app.get("/pools", (req, res) => safe(res, () => getState().pools));
 app.get("/trades", (req, res) => safe(res, () => getState().trades));
 app.get("/ranking", (req, res) => safe(res, () => getState().ranking));
 app.get("/fairness", (req, res) => safe(res, () => getState().fairness));
+
+app.get("/botkeys/:id", (req, res) => {
+
+    const id = parseInt(req.params.id);
+
+    const resultado = dados.find(item => item.ID === id);
+
+    if (!resultado) {
+        return res.status(404).json({
+            erro: "ID não encontrado"
+        });
+    }
+
+    res.json(resultado);
+});
+
 
 app.get("/health", (req, res) => {
   const s = getState();
