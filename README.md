@@ -1,317 +1,472 @@
+# DEX CPMM — Bot Battle
 
-## DEX CPMM — Bot Battle
+Simulação de uma DEX (Decentralized Exchange) baseada em CPMM onde bots competem entre si em tempo real.
 
-Simulação de uma **DEX (Decentralized Exchange) baseada em CPMM** onde bots competem entre si em tempo real. O dashboard apresenta preços ao vivo, gráficos por token, rankings de PnL e um feed de trades estilo Binance.
+O sistema foi desenvolvido para simular um mercado competitivo próximo de um ambiente real, incluindo:
+
+- pools CPMM
+- slippage
+- fees
+- volatilidade
+- bots com estratégias diferentes
+- PnL variável
+- competição em tempo real
+- ranking dinâmico
+- pesos variáveis (dos tokens) definidos durante a competição
 
 ---
 
-## Tecnologias
+# Objetivo do Projeto
+
+O objetivo principal da competição é que cada estudante desenvolva um bot capaz de operar na DEX e obter o melhor desempenho possível.
+
+A avaliação não é fixa. Durante a competição, o professor pode alterar o peso de cada token em tempo real, fazendo com que determinados ativos passem a valer mais ou menos na nota final.
+
+Exemplo:
+
+| Token | Peso |
+|---|---|
+| TKN1 | 80% |
+| TKN2 | 15% |
+| TKN3 | 5% |
+| TKN4 | 0% |
+| TKN5 | 0% |
+
+Neste cenário:
+
+- possuir TKN1 torna-se extremamente importante
+- TKN4 e TKN5 praticamente deixam de impactar a nota
+- bots precisam adaptar comportamento ao mercado e aos pesos atuais
+
+---
+
+# Como a DEX funciona
+
+O projeto utiliza o modelo:
+
+## CPMM (Constant Product Market Maker)
+
+A fórmula principal é:
+
+```txt
+x * y = k
+```
+
+Onde:
+
+- x = reserva do token A
+- y = reserva do token B
+- k = constante da pool
+
+---
+
+## Exemplo simples
+
+Pool:
+
+```txt
+100 TKN1
+100 TKN2
+```
+
+Logo:
+
+```txt
+100 * 100 = 10000
+```
+
+Se um bot compra TKN2 usando TKN1:
+
+```txt
+110 TKN1
+90.90 TKN2
+```
+
+A constante permanece aproximadamente igual:
+
+```txt
+110 * 90.90 ≈ 10000
+```
+
+---
+
+# Como o preço é calculado
+
+O preço é implícito pela relação entre as reservas.
+
+Exemplo:
+
+```txt
+Preço TKN2 em relação ao TKN1:
+
+price = reserveTKN1 / reserveTKN2
+```
+
+Se a reserva de TKN2 diminuir:
+
+- TKN2 fica mais escasso
+- preço sobe
+
+Se a reserva aumentar:
+
+- preço cai
+
+---
+
+### O que é um Swap
+
+Swap significa troca de um token por outro.
+
+Exemplo:
+
+```txt
+Bot entrega:
+73 TKN3
+
+Bot recebe:
+70 TKN4
+```
+
+O sistema NÃO trabalha com troca 1:1.
+
+O valor recebido depende de:
+
+- reservas atuais da pool
+- slippage
+- fee
+- impacto da operação
+
+---
+
+### Slippage
+
+Slippage é a diferença entre o preço esperado e o preço real executado.
+
+Quanto maior a operação:
+
+- maior impacto na pool
+- pior preço
+- maior slippage
+
+---
+
+### Fee
+
+Cada operação possui taxa.
+
+Exemplo atual:
+
+```txt
+0.3%
+```
+
+Isso cria fricção real no mercado.
+
+Bots agressivos podem perder dinheiro apenas operando excessivamente.
+
+---
+
+### Porque todos os bots podem perder dinheiro
+
+Num mercado CPMM:
+
+- bots negociam contra a pool
+- não apenas entre si
+
+Então é possível:
+
+- todos perderem
+- alguns perderem mais
+- poucos conseguirem lucro
+
+Isso acontece por:
+
+- fees
+- slippage
+- operações ruins
+- timing ruim
+- volatilidade
+
+---
+
+# Estratégias dos Bots
+
+O sistema possui múltiplos comportamentos.
+
+## Noise Bot
+
+Executa operações aleatórias para gerar movimento no mercado.
+
+## Trend Bot
+
+Segue tendência.
+
+Compra ativos em subida e vende em queda.
+
+## Shock Bot
+
+Gera movimentos bruscos.
+
+Pode causar pânico ou pumps artificiais.
+
+## Mean Reversion Bot
+
+Assume que preços extremos voltarão ao normal.
+
+---
+
+# Sistema de Avaliação
+
+## Pesos Dinâmicos
+
+Exemplo:
+
+```txt
+TKN1 = 20%
+TKN2 = 20%
+TKN3 = 20%
+TKN4 = 20%
+TKN5 = 20%
+```
+
+Depois:
+
+```txt
+TKN1 = 80%
+TKN2 = 15%
+TKN3 = 5%
+```
+
+Isso muda imediatamente:
+
+- ranking
+- score
+- nota
+- importância dos ativos
+
+---
+
+# Como o Score é calculado
+
+Cada token do bot possui um valor ponderado.
+
+Exemplo:
+
+```txt
+Bot:
+100 TKN1
+50 TKN2
+
+Pesos:
+TKN1 = 80%
+TKN2 = 20%
+```
+
+O sistema calcula:
+
+```txt
+score =
+(valor TKN1 * 0.8)
++
+(valor TKN2 * 0.2)
+```
+
+---
+
+# Como o PnL é calculado
+
+PnL significa:
+
+```txt
+Profit and Loss
+```
+
+O sistema calcula:
+
+```txt
+PnL =
+valor atual da carteira
+-
+valor inicial
+```
+
+Se positivo:
+
+```txt
+lucro
+```
+
+Se negativo:
+
+```txt
+prejuízo
+```
+
+---
+
+# Como a Nota é calculada
+
+A nota deriva diretamente do PnL ponderado.
+
+Fórmula atual:
+
+```txt
+nota = 10 + (pnlPct * 2)
+```
+
+Limitada entre:
+
+```txt
+0 e 20
+```
+
+Exemplos:
+
+| PnL | Nota |
+|---|---|
+| +5% | 20 |
+| +3% | 16 |
+| +1% | 12 |
+| 0% | 10 |
+| -1% | 8 |
+| -3% | 4 |
+| -5% | 0 |
+
+---
+
+# Interface do Professor (Para simular mudanças bruscas)
+
+O projeto possui uma UI exclusiva para o professor.
+
+Nela é possível:
+
+- visualizar pesos atuais
+- alterar pesos em tempo real
+- igualar pesos automaticamente
+- bloquear alterações após o fim da competição
+
+---
+
+# Interface Principal
+
+A UI principal apresenta:
+
+- ranking em tempo real
+- notas
+- PnL
+- swaps realizados
+- histórico de trades
+- gráficos
+- preços
+- pools
+- dominância de tokens
+- tempo restante da competição
+
+---
+
+# Arquitetura do Sistema
+
+```txt
+Bots Python
+      ↓
+Smart Contract Solidity
+      ↓
+Eventos On-Chain
+      ↓
+Backend Node.js
+      ↓
+SSE / API
+      ↓
+Frontend
+```
+
+---
+
+# Tecnologias
 
 | Camada | Stack |
 |---|---|
-| Smart Contracts | Solidity 0.8.24, OpenZeppelin 5, Hardhat |
-| Backend | Node.js 20+, Express, Ethers.js v6, SSE |
-| Bots | Python 3.10+, web3.py |
-| Frontend | HTML/CSS/JS vanilla, Chart.js 4 |
+| Smart Contracts | Solidity, Hardhat, OpenZeppelin |
+| Backend | Node.js, Express, SSE, Ethers.js |
+| Bots | Python, web3.py |
+| Frontend | HTML, CSS, Vanilla JS |
+| Blockchain | Hardhat Local Network |
 
 ---
 
-## Estrutura do Projeto
+# Execução
 
-```
-stockX/
-├── contracts/
-│   ├── CPMMExchange.sol     # DEX principal (CPMM + competição)
-│   └── MarketToken.sol      # Token ERC-20 genérico (CASH + PRODs)
-│
-├── scripts/
-│   ├── deploy.js            # Deploy de todos os contratos
-│   ├── setup.js             # Criação de pools e registo de traders
-│   ├── start.js             # Início da competição (lê DURATION do .env)
-│   └── bootstrap.js         # Setup completo automático (recomendado)
-│
-├── backend/
-│   ├── server.js            # API REST + SSE + ficheiros estáticos
-│   ├── blockchain.js        # Listener de eventos + atualização de estado
-│   ├── state.js             # Estado global em memória + histórico de preços
-│   └── ranking.js           # Cálculo de PnL e ranking
-│
-├── bots/
-│   ├── config.json          # Parâmetros de todos os bots (editável)
-│   ├── common/
-│   │   ├── config.py        # Carrega config.json (caminho único)
-│   │   ├── botBase.py       # Classe base + loop principal
-│   │   └── dexClient.py     # Cliente Web3 com slippage e retry
-│   ├── causes/              # Bots que geram movimento no mercado
-│   │   ├── noiseBot.py
-│   │   ├── shockBot.py
-│   │   └── trendBot.py
-│   ├── conservativeBot.py
-│   ├── momentumBot.py
-│   ├── meanReversionBot.py
-│   └── run_all_bots.py      # Lança todos os bots em paralelo
-│
-├── frontend/
-│   ├── index.html           # Dashboard stock-market style
-│   ├── app.js               # SSE + Chart.js + componentes
-│   └── style.css            # Dark terminal theme
-│
-├── test/
-│   └── CPMMExchange.test.js # Testes Hardhat + Chai (28 testes)
-│
-├── requirements.txt         # Dependências Python
-├── .env.example
-├── traders.json
-├── hardhat.config.js
-└── package.json
-```
-
----
-
-## Pré-requisitos
-
-Antes de começar, garante que tens instalado:
-
-- [Node.js 20+](https://nodejs.org/)
-- [Yarn](https://yarnpkg.com/) — `npm install -g yarn`
-- [Python 3.10+](https://www.python.org/)
-
----
-
-## Instalação (só na primeira vez)
+## Instalar dependências
 
 ```bash
-# 1. Clonar / entrar na pasta do projeto
-cd stockX
-
-# 2. Instalar dependências JavaScript
 yarn install
-
-# 3. Instalar dependências Python
 pip install -r requirements.txt
 ```
 
 ---
 
-## Como Executar o Projeto
-
-Vais precisar de **5 terminais** abertos na pasta raiz do projeto.
-
----
-
-### Terminal 1 — Blockchain local
+## Iniciar sistema completo
 
 ```bash
 yarn bootstrap:local
 ```
 
-Este comando:
-- Levanta um nó Hardhat local (blockchain de teste)
-- Faz deploy de todos os contratos
-- Gera o ficheiro `.env` com os endereços
-- Gera o `traders.json` com os bots
-
-> **Deixa este terminal aberto** durante toda a sessão.
-
 ---
 
-### Terminal 2 — Setup do mercado
-
-```bash
-yarn setup:local
-```
-
-Este comando (corre apenas uma vez após o bootstrap):
-- Cria os 5 pools de liquidez (PROD1 a PROD5)
-- Regista os 6 bots como traders
-- Distribui 1000 CASH a cada bot
-
----
-
-### Terminal 3 — Backend + Dashboard
+## Backend
 
 ```bash
 yarn backend
 ```
 
-- Inicia o servidor na porta 3001
-- Abre o browser em **http://localhost:3001** para ver o dashboard
-
-> Se receberes `EADDRINUSE` (porta já em uso), mata o processo antigo:
-> ```powershell
-> # PowerShell
-> Stop-Process -Id (Get-NetTCPConnection -LocalPort 3001).OwningProcess -Force
-> ```
-
----
-
-### Terminal 4 — Iniciar a competição
-
-Escolhe a duração que queres:
-
+# Iniciar combate
 ```bash
 yarn start:5m    # 5 minutos
 yarn start:10m   # 10 minutos
 yarn start:30m   # 30 minutos
 ```
-
-Ou define `DURATION=<segundos>` no `.env` e usa:
-
-```bash
-yarn start:local
 ```
 
----
-
-### Terminal 5 — Lançar os bots
-
-```bash
-python bots/run_all_bots.py
-```
-
-Os 6 bots arrancam em paralelo e começam a negociar assim que a competição estiver ativa. Para os parar: `Ctrl+C`.
-
----
-
-### Ordem resumida
-
-```
-Terminal 1: yarn bootstrap:local     ← manter aberto
-Terminal 2: yarn setup:local         ← pode fechar depois
-Terminal 3: yarn backend             ← manter aberto
-Terminal 4: yarn start:5m            ← pode fechar depois
-Terminal 5: python bots/run_all_bots.py  ← manter aberto
-```
-
-**Dashboard em tempo real:** http://localhost:3001
-
----
-
-## Para recomeçar do zero
-
-```bash
-# 1. Para tudo (Ctrl+C em todos os terminais)
-# 2. Reinicia no Terminal 1:
-yarn bootstrap:local
-
-# 3. Repete os passos 2 a 5
-```
-
----
-
-## Dashboard
-
-| Secção | Descrição |
-|---|---|
-| Status bar | Estado da competição + countdown |
-| Top Gainers / Losers | Tokens com maior subida/queda desde o início |
-| Market Overview | Tabela com preço, variação, reservas e volume |
-| Price Charts | Gráficos de linha em tempo real por token (Chart.js) |
-| Live Trades | Feed de trades ao vivo (estilo exchange) |
-| Leaderboard | Ranking de bots por PnL |
-
-Atualização em tempo real via **Server-Sent Events (SSE)** — sem polling.
 
 ---
 
 ## Bots
 
-| Bot | Tipo | Estratégia |
-|---|---|---|
-| NoiseBot | Mercado | Trades aleatórios, pequenos |
-| ShockBot | Mercado | Trades grandes e agressivos |
-| TrendBot | Mercado | Segue a tendência de preço |
-| ConservativeBot | Estratégico | Pouco risco, protege capital |
-| MomentumBot | Estratégico | Aposta na continuação da tendência |
-| MeanReversionBot | Estratégico | Aposta na reversão à média |
-
-Para ajustar parâmetros (montantes, thresholds, intervalos), edita **`bots/config.json`** sem tocar no código.
-
----
-
-## Testes
-
 ```bash
-yarn compile   # compila os contratos
-yarn test      # corre os 28 testes
-```
-
-Cobertura:
-- Deployment e configuração
-- Fórmula CPMM e cálculo de taxa
-- Buy/sell com atualização correta de reservas
-- Proteção de slippage
-- Ciclo de vida da competição (start, time-travel, end)
-- Gestão de traders
-
----
-
-## Lógica CPMM
-
-Cada pool segue a fórmula **x · y = k**:
-
-```
-x = reserva de CASH   y = reserva do token   k = constante
-```
-
-**Preço implícito:** `price = x / y`
-
-**Taxa de swap:** 0.3% (30 bps)
-
-**Cálculo do output:**
-```
-amountOut = (amountIn × 9970 × reserveOut) / (reserveIn × 10000 + amountIn × 9970)
+python bots/run_all_bots.py
 ```
 
 ---
 
-## Segurança implementada
+# Cadastrar bot na dex
+- Preencha o arquivo excell com os seus dados e deixe a coluna da chave em branco
+- Salve o arquivo com o mesmo nome que está lá e execute os comandos da dex
+- Verifiquei no .env da dex se a nova chave BOT_XXXXX Foi adicionada
 
-| Área | Melhoria |
-|---|---|
-| Contrato | `amountOutMin` em `buy()` e `sell()` — proteção contra slippage |
-| Contrato | `endCompetition()` só pode ser chamado após `competitionEndTime` |
-| Contrato | `addLiquidity()` valida reservas não-zero |
-| Backend | Rate limiting: 60 req/min por IP |
-| Backend | Sem sobreposição de chamadas de refresh (overlap lock) |
-| Backend | Erro isolado por endpoint (sem crash total) |
-| Bots | Slippage protection calculada antes de cada transação |
-| Bots | Retry automático até 3 vezes em caso de falha |
+# Comunicação do BOT com a dex
+- Altere o arquivo .env do seu bot ou no codigo o ip
+- Nos arquivos .env dos bots, cole a chave que foi gerada na ultima linha
+- Reinicie o bot
 
----
+# Observações
 
-## Ranking (PnL)
-
-```
-Total Value = saldo CASH + Σ(tokens_i × preço_i)
-PnL = Total Value − saldo inicial (1000 CASH)
-```
+- o mercado não é determinístico
+- resultados variam entre execuções
+- bots podem ganhar ou perder dinheiro
+- pesos alteram completamente a dinâmica da competição
+- slippage e fees impactam fortemente operações grandes
 
 ---
 
-## Variáveis de Ambiente
+# Conclusão
 
-O ficheiro `.env` é gerado automaticamente pelo `bootstrap:local`. Para referência, o `.env.example` contém:
+O projeto evoluiu de uma simples demo CPMM para um ambiente competitivo completo, com:
 
-```env
-RPC_URL=http://127.0.0.1:8545
-EXCHANGE_ADDRESS=
-CASH_ADDRESS=
-PROD1_ADDRESS=
-PROD2_ADDRESS=
-PROD3_ADDRESS=
-PROD4_ADDRESS=
-PROD5_ADDRESS=
-INITIAL_BASE_BALANCE=1000
-TRADERS_FILE=traders.json
-PORT=3001
-DURATION=300
-BOT_NOISE_PK=
-BOT_SHOCK_PK=
-BOT_TREND_PK=
-BOT_CONSERVATIVE_PK=
-BOT_MOMENTUM_PK=
-BOT_MEAN_REVERSION_PK=
-```
-
-> O `.env` contém chaves privadas de desenvolvimento. Nunca o commites para o git.
+- mercado em tempo real
+- competição entre bots
+- avaliação dinâmica
+- métricas de desempenho
+- simulação de comportamento de mercado
+- ranking ponderado
+- sistema de notas
+- observabilidade completa

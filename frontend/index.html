@@ -12,8 +12,8 @@
       <!-- ── Header ─────────────────────────────────────────────────────── -->
       <header class="header">
         <div>
-          <p class="eyebrow">DEX CPMM · BOT BATTLE</p>
-          <h1>Trading Arena</h1>
+          <p class="eyebrow">DEX CPMM · TURMA P · 3º ANO · ENGENHARIA INFORMÁTICA</p>
+          <h1>COMÉRCIO ELETRONICO</h1>
           <p class="subtitle">
             Mercados CPMM, bots ativos e execução de trades em tempo real.
           </p>
@@ -22,7 +22,7 @@
         <div class="header-status">
           <div class="live-pill">
             <span class="live-dot"></span>
-            <span id="competition-status">Loading</span>
+            <span id="competition-status">A Carregar...</span>
           </div>
 
           <div>
@@ -33,7 +33,7 @@
       </header>
 
       <!-- ── Control Panel ──────────────────────────────────────────────── -->
-     <section class="panel ctrl-panel ctrl-compact">
+     <!-- <section class="panel ctrl-panel ctrl-compact">
   <div class="ctrl-mainline">
     <div class="ctrl-left">
       <span class="ctrl-label">Control</span>
@@ -62,18 +62,18 @@
   </div>
 
   <p id="ctrl-hint" class="ctrl-hint">Pronto para iniciar.</p>
-</section>
+</section> -->
 
       <!-- ── Metrics ────────────────────────────────────────────────────── -->
       <!-- Metrics -->
 <section class="metrics">
   <div class="metric">
-    <span>Total Swaps</span>
+    <span>Total de Swaps</span>
     <strong id="total-trades">--</strong>
   </div>
 
   <div class="metric">
-    <span>Active Bots</span>
+    <span>Bots Ativos</span>
     <strong id="active-bots">--</strong>
   </div>
 
@@ -83,9 +83,9 @@
   </div>
 
   <div class="metric">
-    <span>Reference</span>
-    <strong id="total-volume">--</strong>
-  </div>
+  <span>Pesos (%)</span>
+  <strong id="total-volume">20/20/20/20/20</strong>
+</div>
 </section>
 
       <!-- ── Main layout: Markets / Leaderboard / Trades ───────────────── -->
@@ -108,8 +108,8 @@
   <section class="panel leaderboard-panel">
     <div class="section-header">
       <div>
-        <h2>Leaderboard</h2>
-        <p>Bots ordenados por PnL</p>
+        <h2>Classificação</h2>
+        <p>Bots ordenados pela maior Nota</p>
       </div>
     </div>
 
@@ -117,21 +117,22 @@
       <table>
         <thead>
           <tr>
-            <th>#</th>
-            <th>Bot</th>
-            <th>TKN1</th>
-            <th>TKN2</th>
-            <th>TKN3</th>
-            <th>TKN4</th>
-            <th>TKN5</th>
-            <th>Value Ref.</th>
-            <th>PnL</th>
-            <th>Ops</th>
-          </tr>
+  <th>#</th>
+  <th>Bot</th>
+  <th>Nota</th>
+  <th>TKN1</th>
+  <th>TKN2</th>
+  <th>TKN3</th>
+  <th>TKN4</th>
+  <th>TKN5</th>
+  <th>Score</th>
+  <th>PnL</th>
+  <th>Ops</th>
+</tr>
         </thead>
         <tbody id="ranking-body">
           <tr>
-            <td colspan="10" class="empty">A carregar ranking...</td>
+            <td colspan="11" class="empty">A carregar ranking...</td>
           </tr>
         </tbody>
       </table>
@@ -141,7 +142,7 @@
   <section class="panel trades-panel">
     <div class="section-header">
       <div>
-        <h2>Live Trades</h2>
+        <h2>Negociações ao vivo</h2>
         <p>Fluxo recente de ordens</p>
       </div>
     </div>
@@ -157,8 +158,8 @@
       <section class="panel charts-section">
         <div class="section-header">
           <div>
-            <h2>Price Charts</h2>
-            <p>Candlestick OHLC — dados reais dos trades em tempo real</p>
+            <h2>Gráficos</h2>
+            <p>Acompanhe as variações de preço em tempo real pelo gráfico de velas</p>
           </div>
 
           <div class="chart-controls">
@@ -179,7 +180,6 @@
       </section>
     </div>
 
-    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <script src="./app.js"></script>
+  <script src="./vendor/lightweight-charts/lightweight-charts.standalone.production.js"></script>    <script src="./app.js"></script>
   </body>
 </html>

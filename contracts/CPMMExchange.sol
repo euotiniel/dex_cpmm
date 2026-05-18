@@ -40,6 +40,8 @@ contract CPMMExchange is Ownable {
     mapping(address => uint256) public traderLastTradeAt;
     mapping(address => uint256) public traderFeesPaid;
 
+    mapping(address => uint256) public gradingWeightBps;
+
     uint256 public traderCount;
     uint256 public totalFeesPaid;
 
@@ -78,6 +80,11 @@ contract CPMMExchange is Ownable {
 
     event CompetitionEnded(uint256 indexed endTime);
 
+    event GradingWeightsUpdated(
+        address[] tokens,
+        uint256[] weightsBps
+    );
+
     modifier onlyActiveCompetition() {
         require(getCurrentCompetitionStatus() == CompetitionStatus.ACTIVE, "Competition not active");
         _;
@@ -89,12 +96,54 @@ contract CPMMExchange is Ownable {
         require(tokens.length == 0, "Tokens already registered");
         require(tokenList.length == 5, "Exactly 5 tokens required");
 
+        uint256 equalWeight = BPS_DENOMINATOR / tokenList.length;
+
         for (uint256 i = 0; i < tokenList.length; i++) {
             require(tokenList[i] != address(0), "Invalid token");
             require(!supportedToken[tokenList[i]], "Token already registered");
 
             supportedToken[tokenList[i]] = true;
             tokens.push(tokenList[i]);
+            gradingWeightBps[tokenList[i]] = equalWeight;
+        }
+    }
+
+    function setGradingWeights(
+        address[] calldata tokenList,
+        uint256[] calldata weightsBps
+    ) external onlyOwner {
+        require(tokenList.length == weightsBps.length, "Length mismatch");
+        require(tokenList.length == tokens.length, "Invalid token count");
+
+        uint256 total;
+
+        for (uint256 i = 0; i < tokenList.length; i++) {
+            require(supportedToken[tokenList[i]], "Unsupported token");
+            total += weightsBps[i];
+        }
+
+        require(total == BPS_DENOMINATOR, "Weights must sum 10000");
+
+        for (uint256 i = 0; i < tokenList.length; i++) {
+            gradingWeightBps[tokenList[i]] = weightsBps[i];
+        }
+
+        emit GradingWeightsUpdated(tokenList, weightsBps);
+    }
+
+    function getGradingWeights()
+        external
+        view
+        returns (
+            address[] memory tokenList,
+            uint256[] memory weightsBps
+        )
+    {
+        tokenList = tokens;
+        weightsBps = new uint256[](tokens.length);
+
+        for (uint256 i = 0; i < tokens.length; i++) {
+            weightsBps[i] = gradingWeightBps[tokens[i]];
         }
     }
 

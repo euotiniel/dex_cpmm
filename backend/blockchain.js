@@ -5,6 +5,7 @@ import {
   setTraders,
   setTokens,
   setReferenceToken,
+  setGradingWeights,
   upsertPool,
   addTrade,
   setRanking,
@@ -21,12 +22,15 @@ const EXCHANGE_ABI = [
   "function quote(address tokenIn, address tokenOut, uint256 amountIn) view returns (uint256 amountOut)",
   "function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut) pure returns (uint256)",
   "function getCompetitionStatus() view returns (uint8 status, uint256 startTime, uint256 endTime)",
+  "function getGradingWeights() view returns (address[] memory tokenList, uint256[] memory weightsBps)",
+  "function setGradingWeights(address[] calldata tokenList, uint256[] calldata weightsBps) external",
   "function startCompetition(uint256 durationSeconds) external",
   "function endCompetition() external",
   "function isTrader(address) view returns (bool)",
   "event Swapped(address indexed trader, bytes32 indexed poolId, address indexed tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut, uint256 newReserveIn, uint256 newReserveOut)",
   "event CompetitionStarted(uint256 indexed startTime, uint256 indexed endTime, uint256 durationSeconds)",
   "event CompetitionEnded(uint256 indexed endTime)",
+  "event GradingWeightsUpdated(address[] tokens, uint256[] weightsBps)",
 ];
 
 const TOKEN_ABI = [
@@ -107,7 +111,9 @@ export async function reinitBlockchain() {
 }
 
 export async function initBlockchain() {
-  provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "http://127.0.0.1:8545");
+  provider = new ethers.JsonRpcProvider(
+    process.env.RPC_URL || "http://127.0.0.1:8545"
+  );
 
   exchange = new ethers.Contract(
     process.env.EXCHANGE_ADDRESS,
@@ -124,6 +130,7 @@ export async function initBlockchain() {
 
   await refreshCompetitionStatus();
   await refreshTokens();
+  await refreshGradingWeights();
   await refreshPools();
   await refreshAllBalances();
 
@@ -171,6 +178,25 @@ async function refreshTokens() {
   }
 
   setTokens(tokens);
+}
+
+async function refreshGradingWeights() {
+  const [tokenAddresses, weightsBps] = await exchange.getGradingWeights();
+  const state = getState();
+
+  const weights = {};
+
+  for (let i = 0; i < tokenAddresses.length; i++) {
+    const token = state.tokens.find(
+      (t) => norm(t.address) === norm(tokenAddresses[i])
+    );
+
+    if (!token) continue;
+
+    weights[token.symbol] = Number(weightsBps[i]) / 100;
+  }
+
+  setGradingWeights(weights);
 }
 
 async function refreshPools() {
@@ -254,7 +280,8 @@ function computeRanking() {
     traders: trackedTraders,
     tokenBalancesByTrader,
     pools: state.pools,
-    referenceToken: state.referenceToken.address,
+    tokens: state.tokens,
+    gradingWeights: state.gradingWeights,
     initialReferenceValue,
   }).map((item) => ({
     ...item,
@@ -343,6 +370,15 @@ function registerEventListeners() {
     await refreshAllBalances();
     computeRanking();
   });
+
+  exchange.on("GradingWeightsUpdated", async () => {
+    try {
+      await refreshGradingWeights();
+      computeRanking();
+    } catch (err) {
+      console.error("GradingWeightsUpdated event error:", err.message);
+    }
+  });
 }
 
 export function setTrackedTraders(traders) {
@@ -369,12 +405,56 @@ export async function refreshAll() {
   try {
     await refreshCompetitionStatus();
     await refreshTokens();
+    await refreshGradingWeights();
     await refreshPools();
     await refreshAllBalances();
     computeRanking();
   } finally {
     refreshLock = false;
   }
+}
+
+export async function setGradingWeightsOnChain(weightsBySymbol) {
+  if (!provider || !exchange) {
+    throw new Error("Blockchain not initialised");
+  }
+
+  const state = getState();
+
+  const tokenList = [];
+  const weightsBps = [];
+
+  for (const token of state.tokens) {
+    const value = Number(weightsBySymbol[token.symbol] ?? 0);
+
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Invalid weight for ${token.symbol}`);
+    }
+
+    tokenList.push(token.address);
+    weightsBps.push(BigInt(Math.round(value * 100)));
+  }
+
+  const total = weightsBps.reduce((sum, value) => sum + value, 0n);
+
+  if (total !== 10000n) {
+    throw new Error(`Weights must sum 100. Current sum: ${Number(total) / 100}`);
+  }
+
+  const pk =
+    process.env.DEPLOYER_PK ||
+    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+  const signer = new ethers.Wallet(pk, provider);
+  const ex = exchange.connect(signer);
+
+  const tx = await ex.setGradingWeights(tokenList, weightsBps);
+  await tx.wait();
+
+  await refreshGradingWeights();
+  computeRanking();
+
+  return getState().gradingWeights;
 }
 
 export async function startCompetitionOnChain(durationSeconds = 300) {

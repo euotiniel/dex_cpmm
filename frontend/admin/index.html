@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Professor · Token Weights</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+
+<body>
+  <div class="app">
+
+    <section class="panel professor-panel">
+      <div class="section-header">
+        <div>
+          <h2>Pesos atuais</h2>
+          <p>Estes valores afetam diretamente o ranking dos bots.</p>
+        </div>
+        <span class="tag" id="weights-total">Total: --%</span>
+      </div>
+
+      <form id="weights-form" class="weights-form">
+        <div id="weights-container" class="weights-grid">
+          <p class="empty">A carregar tokens...</p>
+        </div>
+
+        <div class="weights-actions">
+          <button type="button" id="btn-equalize" class="cbtn cbtn-secondary">
+            Igualar pesos
+          </button>
+
+          <button type="submit" class="cbtn cbtn-primary">
+            Aplicar pesos
+          </button>
+        </div>
+
+        <p id="weights-message" class="ctrl-hint"></p>
+      </form>
+    </section>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

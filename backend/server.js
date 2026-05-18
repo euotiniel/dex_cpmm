@@ -6,6 +6,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
+import XLSX from "xlsx";
+
 
 import {
   emitter,
@@ -33,6 +35,7 @@ import {
   addTrackedTrader,
   executeSwapFor,
   getBalanceFor,
+  setGradingWeightsOnChain,
 } from "./blockchain.js";
 
 import { orchestrator, ORCH_STATE } from "./orchestrator.js";
@@ -42,6 +45,8 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
+
+
 
 const app = express();
 app.use(cors());
@@ -101,6 +106,19 @@ function safe(res, fn) {
   }
 }
 
+
+/**
+Criar rota para chaves
+ */
+
+const workbook = XLSX.readFile("PlanilhaChaves.xlsx");
+
+const sheetName = workbook.SheetNames[0];
+const sheet = workbook.Sheets[sheetName];
+
+const dados = XLSX.utils.sheet_to_json(sheet);
+
+
 /* ===========================
    READ ROUTES
 =========================== */
@@ -113,6 +131,22 @@ app.get("/pools", (req, res) => safe(res, () => getState().pools));
 app.get("/trades", (req, res) => safe(res, () => getState().trades));
 app.get("/ranking", (req, res) => safe(res, () => getState().ranking));
 app.get("/fairness", (req, res) => safe(res, () => getState().fairness));
+
+app.get("/botkeys/:id", (req, res) => {
+
+    const id = parseInt(req.params.id);
+
+    const resultado = dados.find(item => item.ID === id);
+
+    if (!resultado) {
+        return res.status(404).json({
+            erro: "ID não encontrado"
+        });
+    }
+
+    res.json(resultado);
+});
+
 
 app.get("/health", (req, res) => {
   const s = getState();
@@ -169,6 +203,76 @@ app.post("/admin/reference-token", (req, res) => {
     ok: true,
     referenceToken: token.symbol,
   });
+});
+
+/* ===========================
+   GRADING WEIGHTS (ON-CHAIN)
+=========================== */
+
+app.get("/admin/grading-weights", (req, res) => {
+  const state = getState();
+
+  res.json({
+    ok: true,
+    weights: state.gradingWeights,
+  });
+});
+
+app.post("/admin/grading-weights", async (req, res) => {
+  try {
+    const { weights } = req.body || {};
+    const state = getState();
+
+    if (state.status?.competitionStatus === "ENDED") {
+      return res.status(403).json({
+        error: "Competition ended. Weights can no longer be changed.",
+      });
+    }
+
+    if (!weights || typeof weights !== "object") {
+      return res.status(400).json({
+        error: "weights object required",
+      });
+    }
+
+    const validSymbols = state.tokens.map((token) => token.symbol);
+    const normalizedWeights = {};
+
+    for (const symbol of validSymbols) {
+      const value = Number(weights[symbol] ?? 0);
+
+      if (!Number.isFinite(value) || value < 0) {
+        return res.status(400).json({
+          error: `Invalid weight for ${symbol}`,
+        });
+      }
+
+      normalizedWeights[symbol] = value;
+    }
+
+    const total = Object.values(normalizedWeights).reduce(
+      (sum, value) => sum + value,
+      0
+    );
+
+    if (Math.abs(total - 100) > 0.0001) {
+      return res.status(400).json({
+        error: `Weights must sum 100. Current sum: ${total}`,
+      });
+    }
+
+    const onChainWeights = await setGradingWeightsOnChain(normalizedWeights);
+    await refreshAll();
+
+    res.json({
+      ok: true,
+      weights: onChainWeights,
+    });
+  } catch (e) {
+    res.status(500).json({
+      error: e.message,
+    });
+  }
 });
 
 /* ===========================

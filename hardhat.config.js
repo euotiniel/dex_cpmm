@@ -15,8 +15,14 @@ export default {
   },
 
   networks: {
+    hardhat: {
+      accounts: {
+        count: 120,
+      }
+    },
+
     localhost: {
-      url: "http://127.0.0.1:8545"
+      url: process.env.RPC_URL,
     }
   }
 };

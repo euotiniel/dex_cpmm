@@ -142,7 +142,7 @@ class Orchestrator extends EventEmitter {
 
     try {
       const p = new ethers.JsonRpcProvider(
-        process.env.RPC_URL || "http://127.0.0.1:8545"
+        process.env.RPC_URL
       );
       await p.getBlockNumber();
       return true;
@@ -161,11 +161,11 @@ class Orchestrator extends EventEmitter {
 
   _runHardhatScript(scriptRelPath, extraEnv = {}) {
     return new Promise((resolve, reject) => {
-      this.log(`Running: npx hardhat run ${scriptRelPath} --network localhost`);
+      this.log(`Running: npx hardhat run ${scriptRelPath} --network ${process.env.RPC_URL}`);
 
       const proc = this._spawn(
         "npx",
-        ["hardhat", "run", scriptRelPath, "--network", "localhost"],
+        ["hardhat", "run", scriptRelPath, "--network", process.env.RPC_URL],
         extraEnv
       );
 
@@ -229,7 +229,7 @@ class Orchestrator extends EventEmitter {
           text.includes("Listening on")
         ) {
           clearTimeout(timer);
-          this.log("Hardhat node ready on http://127.0.0.1:8545");
+          this.log("Hardhat node ready");
           resolve();
         }
       });

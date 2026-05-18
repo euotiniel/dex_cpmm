@@ -41,6 +41,16 @@ EXCHANGE_ABI = [
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "getGradingWeights",
+        "outputs": [
+            {"internalType": "address[]", "name": "tokenList", "type": "address[]"},
+            {"internalType": "uint256[]", "name": "weightsBps", "type": "uint256[]"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {"internalType": "address", "name": "tokenIn", "type": "address"},
             {"internalType": "address", "name": "tokenOut", "type": "address"},
@@ -130,6 +140,7 @@ class DexClient:
         self.exchange_address = Web3.to_checksum_address(os.getenv("EXCHANGE_ADDRESS"))
 
         self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
+
         if not self.w3.is_connected():
             raise RuntimeError("Nao foi possivel conectar ao RPC")
 
@@ -148,7 +159,6 @@ class DexClient:
 
     def _load_tokens(self):
         addresses = self.exchange.functions.getTokens().call()
-
         self.token_addresses = [Web3.to_checksum_address(a) for a in addresses]
 
         for address in self.token_addresses:
@@ -165,6 +175,7 @@ class DexClient:
 
     def _build_and_send(self, tx_function):
         nonce = self.w3.eth.get_transaction_count(self.address)
+
         tx = tx_function.build_transaction({
             "from": self.address,
             "nonce": nonce,
@@ -220,11 +231,20 @@ class DexClient:
         address = Web3.to_checksum_address(token_address)
         return self.tokens[address]["symbol"]
 
+    def get_token_by_symbol(self, symbol: str):
+        symbol = symbol.upper()
+
+        for token in self.tokens.values():
+            if token["symbol"].upper() == symbol:
+                return token
+
+        return None
+
     def get_balance(self, token_address: str) -> float:
         address = Web3.to_checksum_address(token_address)
         token = self.tokens[address]
-        raw = token["contract"].functions.balanceOf(self.address).call()
 
+        raw = token["contract"].functions.balanceOf(self.address).call()
         return raw / (10 ** token["decimals"])
 
     def get_all_balances(self) -> Dict[str, float]:
@@ -232,6 +252,31 @@ class DexClient:
             address: self.get_balance(address)
             for address in self.token_addresses
         }
+
+    def get_all_balances_by_symbol(self) -> Dict[str, float]:
+        result = {}
+
+        for address in self.token_addresses:
+            symbol = self.get_symbol(address)
+            result[symbol] = self.get_balance(address)
+
+        return result
+
+    def get_grading_weights(self) -> Dict[str, float]:
+        token_list, weights_bps = self.exchange.functions.getGradingWeights().call()
+
+        result = {}
+
+        for address, weight_bps in zip(token_list, weights_bps):
+            checksum = Web3.to_checksum_address(address)
+
+            if checksum not in self.tokens:
+                continue
+
+            symbol = self.tokens[checksum]["symbol"]
+            result[symbol] = float(weight_bps) / 100
+
+        return result
 
     def get_pool_ids(self):
         return self.exchange.functions.getPoolIds().call()
@@ -275,6 +320,38 @@ class DexClient:
 
         return pools
 
+    def find_pool_by_tokens(self, token_a: str, token_b: str):
+        token_a = Web3.to_checksum_address(token_a)
+        token_b = Web3.to_checksum_address(token_b)
+
+        for pool in self.get_all_pools():
+            p0 = pool["token0"]
+            p1 = pool["token1"]
+
+            if (p0 == token_a and p1 == token_b) or (p0 == token_b and p1 == token_a):
+                return pool
+
+        return None
+
+    def quote(self, token_in: str, token_out: str, amount_in: float) -> float:
+        token_in = Web3.to_checksum_address(token_in)
+        token_out = Web3.to_checksum_address(token_out)
+
+        token = self.tokens[token_in]
+        amount_wei = int(amount_in * (10 ** token["decimals"]))
+
+        if amount_wei <= 0:
+            return 0
+
+        raw = self.exchange.functions.quote(
+            token_in,
+            token_out,
+            amount_wei
+        ).call()
+
+        out_token = self.tokens[token_out]
+        return raw / (10 ** out_token["decimals"])
+
     def ensure_approval(self, token_address: str, amount_wei: int):
         token_address = Web3.to_checksum_address(token_address)
         contract = self.tokens[token_address]["contract"]
@@ -291,7 +368,11 @@ class DexClient:
             contract.functions.approve(self.exchange_address, amount_wei * 2)
         )
 
-        print(f"[{self.address}] approve {self.get_symbol(token_address)}: {receipt.transactionHash.hex()}", flush=True)
+        print(
+            f"[{self.address}] approve {self.get_symbol(token_address)}: "
+            f"{receipt.transactionHash.hex()}",
+            flush=True
+        )
 
     def swap(self, token_in: str, token_out: str, amount_in: float):
         token_in = Web3.to_checksum_address(token_in)
