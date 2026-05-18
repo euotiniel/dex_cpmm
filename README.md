@@ -1,402 +1,48 @@
-# DEX CPMM — Bot Battle
+# DEX CPMM
 
-Simulação de uma DEX (Decentralized Exchange) baseada em CPMM onde bots competem entre si em tempo real.
+<p align="">
+Exchange descentralizada baseada em CPMM, com bots autónomos, ranking dinâmico, pesos de tokens variáveis e competição em tempo real.
+</p>
 
-O sistema foi desenvolvido para simular um mercado competitivo próximo de um ambiente real, incluindo:
+O sistema combina:
 
-- pools CPMM
-- slippage
-- fees
-- volatilidade
-- bots com estratégias diferentes
-- PnL variável
-- competição em tempo real
-- ranking dinâmico
-- pesos variáveis (dos tokens) definidos durante a competição
-
----
-
-# Objetivo do Projeto
-
-O objetivo principal da competição é que cada estudante desenvolva um bot capaz de operar na DEX e obter o melhor desempenho possível.
-
-A avaliação não é fixa. Durante a competição, o professor pode alterar o peso de cada token em tempo real, fazendo com que determinados ativos passem a valer mais ou menos na nota final.
-
-Exemplo:
-
-| Token | Peso |
-|---|---|
-| TKN1 | 80% |
-| TKN2 | 15% |
-| TKN3 | 5% |
-| TKN4 | 0% |
-| TKN5 | 0% |
-
-Neste cenário:
-
-- possuir TKN1 torna-se extremamente importante
-- TKN4 e TKN5 praticamente deixam de impactar a nota
-- bots precisam adaptar comportamento ao mercado e aos pesos atuais
-
----
-
-# Como a DEX funciona
-
-O projeto utiliza o modelo:
-
-## CPMM (Constant Product Market Maker)
-
-A fórmula principal é:
-
-```txt
-x * y = k
-```
-
-Onde:
-
-- x = reserva do token A
-- y = reserva do token B
-- k = constante da pool
-
----
-
-## Exemplo simples
-
-Pool:
-
-```txt
-100 TKN1
-100 TKN2
-```
-
-Logo:
-
-```txt
-100 * 100 = 10000
-```
-
-Se um bot compra TKN2 usando TKN1:
-
-```txt
-110 TKN1
-90.90 TKN2
-```
-
-A constante permanece aproximadamente igual:
-
-```txt
-110 * 90.90 ≈ 10000
-```
-
----
-
-# Como o preço é calculado
-
-O preço é implícito pela relação entre as reservas.
-
-Exemplo:
-
-```txt
-Preço TKN2 em relação ao TKN1:
-
-price = reserveTKN1 / reserveTKN2
-```
-
-Se a reserva de TKN2 diminuir:
-
-- TKN2 fica mais escasso
-- preço sobe
-
-Se a reserva aumentar:
-
-- preço cai
-
----
-
-### O que é um Swap
-
-Swap significa troca de um token por outro.
-
-Exemplo:
-
-```txt
-Bot entrega:
-73 TKN3
-
-Bot recebe:
-70 TKN4
-```
-
-O sistema NÃO trabalha com troca 1:1.
-
-O valor recebido depende de:
-
-- reservas atuais da pool
-- slippage
-- fee
-- impacto da operação
-
----
-
-### Slippage
-
-Slippage é a diferença entre o preço esperado e o preço real executado.
-
-Quanto maior a operação:
-
-- maior impacto na pool
-- pior preço
-- maior slippage
-
----
-
-### Fee
-
-Cada operação possui taxa.
-
-Exemplo atual:
-
-```txt
-0.3%
-```
-
-Isso cria fricção real no mercado.
-
-Bots agressivos podem perder dinheiro apenas operando excessivamente.
-
----
-
-### Porque todos os bots podem perder dinheiro
-
-Num mercado CPMM:
-
-- bots negociam contra a pool
-- não apenas entre si
-
-Então é possível:
-
-- todos perderem
-- alguns perderem mais
-- poucos conseguirem lucro
-
-Isso acontece por:
-
-- fees
-- slippage
-- operações ruins
-- timing ruim
-- volatilidade
-
----
-
-# Estratégias dos Bots
-
-O sistema possui múltiplos comportamentos.
-
-## Noise Bot
-
-Executa operações aleatórias para gerar movimento no mercado.
-
-## Trend Bot
-
-Segue tendência.
-
-Compra ativos em subida e vende em queda.
-
-## Shock Bot
-
-Gera movimentos bruscos.
-
-Pode causar pânico ou pumps artificiais.
-
-## Mean Reversion Bot
-
-Assume que preços extremos voltarão ao normal.
-
----
-
-# Sistema de Avaliação
-
-## Pesos Dinâmicos
-
-Exemplo:
-
-```txt
-TKN1 = 20%
-TKN2 = 20%
-TKN3 = 20%
-TKN4 = 20%
-TKN5 = 20%
-```
-
-Depois:
-
-```txt
-TKN1 = 80%
-TKN2 = 15%
-TKN3 = 5%
-```
-
-Isso muda imediatamente:
-
-- ranking
-- score
-- nota
-- importância dos ativos
-
----
-
-# Como o Score é calculado
-
-Cada token do bot possui um valor ponderado.
-
-Exemplo:
-
-```txt
-Bot:
-100 TKN1
-50 TKN2
-
-Pesos:
-TKN1 = 80%
-TKN2 = 20%
-```
-
-O sistema calcula:
-
-```txt
-score =
-(valor TKN1 * 0.8)
-+
-(valor TKN2 * 0.2)
-```
-
----
-
-# Como o PnL é calculado
-
-PnL significa:
-
-```txt
-Profit and Loss
-```
-
-O sistema calcula:
-
-```txt
-PnL =
-valor atual da carteira
--
-valor inicial
-```
-
-Se positivo:
-
-```txt
-lucro
-```
-
-Se negativo:
-
-```txt
-prejuízo
-```
-
----
-
-# Como a Nota é calculada
-
-A nota deriva diretamente do PnL ponderado.
-
-Fórmula atual:
-
-```txt
-nota = 10 + (pnlPct * 2)
-```
-
-Limitada entre:
-
-```txt
-0 e 20
-```
-
-Exemplos:
-
-| PnL | Nota |
-|---|---|
-| +5% | 20 |
-| +3% | 16 |
-| +1% | 12 |
-| 0% | 10 |
-| -1% | 8 |
-| -3% | 4 |
-| -5% | 0 |
-
----
-
-# Interface do Professor (Para simular mudanças bruscas)
-
-O projeto possui uma UI exclusiva para o professor.
-
-Nela é possível:
-
-- visualizar pesos atuais
-- alterar pesos em tempo real
-- igualar pesos automaticamente
-- bloquear alterações após o fim da competição
-
----
-
-# Interface Principal
-
-A UI principal apresenta:
-
+- smart contracts em Solidity
+- backend event-driven
+- bots autónomos
 - ranking em tempo real
-- notas
-- PnL
-- swaps realizados
-- histórico de trades
-- gráficos
-- preços
-- pools
-- dominância de tokens
-- tempo restante da competição
+- pesos dinâmicos
+- observabilidade do mercado
+- exportação académica
+- integração de bots externos
+
+A DEX CPMM é um ambiente competitivo de simulação de mercado construído sobre um modelo de Automated Market Maker (AMM).
 
 ---
 
-# Arquitetura do Sistema
+# Índice
 
-```txt
-Bots Python
-      ↓
-Smart Contract Solidity
-      ↓
-Eventos On-Chain
-      ↓
-Backend Node.js
-      ↓
-SSE / API
-      ↓
-Frontend
-```
+- [1. Instalação](#1-instalação)
+- [2. Execução](#2-execução)
+- [3. Visão Geral](#3-visão-geral)
+- [4. Arquitetura do Sistema](#5-arquitetura-do-sistema)
+- [5. Como a DEX Funciona](#6-como-a-dex-funciona)
+- [6 Sistema de Avaliação](#7-sistema-de-avaliação)
+- [7. Bots](#9-bots)
+- [8. Tecnologias](#14-tecnologias)
 
 ---
 
-# Tecnologias
+## 1. Instalação
 
-| Camada | Stack |
-|---|---|
-| Smart Contracts | Solidity, Hardhat, OpenZeppelin |
-| Backend | Node.js, Express, SSE, Ethers.js |
-| Bots | Python, web3.py |
-| Frontend | HTML, CSS, Vanilla JS |
-| Blockchain | Hardhat Local Network |
+### Requisitos
+
+- Node.js 20+
+- Python 3.10+
+- Yarn
 
 ---
 
-# Execução
-
-## Instalar dependências
+### Dependências
 
 ```bash
 yarn install
@@ -405,7 +51,9 @@ pip install -r requirements.txt
 
 ---
 
-## Iniciar sistema completo
+## 2. Execução
+
+### 1. Blockchain local
 
 ```bash
 yarn bootstrap:local
@@ -413,24 +61,44 @@ yarn bootstrap:local
 
 ---
 
-## Backend
+### 2. Configurar mercado
+
+```bash
+yarn setup:local
+```
+
+---
+
+### 3. Backend
 
 ```bash
 yarn backend
 ```
 
-# Iniciar combate
-```bash
-yarn start:5m    # 5 minutos
-yarn start:10m   # 10 minutos
-yarn start:30m   # 30 minutos
-```
-```
+Dashboard:
 
+```txt
+http://localhost:3001
+```
 
 ---
 
-## Bots
+### 4. Iniciar competição
+
+```bash
+yarn start:5m
+```
+
+Outras durações:
+
+```bash
+yarn start:10m
+yarn start:30m
+```
+
+---
+
+### 5. Iniciar bots
 
 ```bash
 python bots/run_all_bots.py
@@ -438,35 +106,234 @@ python bots/run_all_bots.py
 
 ---
 
-# Cadastrar bot na dex
-- Preencha o arquivo excell com os seus dados e deixe a coluna da chave em branco
-- Salve o arquivo com o mesmo nome que está lá e execute os comandos da dex
-- Verifiquei no .env da dex se a nova chave BOT_XXXXX Foi adicionada
+### Fluxo Completo
 
-# Comunicação do BOT com a dex
-- Altere o arquivo .env do seu bot ou no codigo o ip
-- Nos arquivos .env dos bots, cole a chave que foi gerada na ultima linha
-- Reinicie o bot
-
-# Observações
-
-- o mercado não é determinístico
-- resultados variam entre execuções
-- bots podem ganhar ou perder dinheiro
-- pesos alteram completamente a dinâmica da competição
-- slippage e fees impactam fortemente operações grandes
+```txt
+Hardhat Node
+    ↓
+Deploy dos contratos
+    ↓
+Criação das pools
+    ↓
+Distribuição inicial
+    ↓
+Inicialização backend
+    ↓
+Lançamento dos bots
+    ↓
+Competição
+```
 
 ---
 
-# Conclusão
+### Considerações
 
-O projeto evoluiu de uma simples demo CPMM para um ambiente competitivo completo, com:
+Este projeto foi desenvolvido como um ambiente experimental para:
 
-- mercado em tempo real
-- competição entre bots
-- avaliação dinâmica
-- métricas de desempenho
+- estudo de mercados automatizados
+- análise de competição algorítmica
+- experimentação com AMMs
+- sistemas multi-agente
+- infraestrutura blockchain
 - simulação de comportamento de mercado
-- ranking ponderado
-- sistema de notas
-- observabilidade completa
+
+Não é destinado a uso financeiro em produção, pelo menos por agora.
+
+---
+
+## 3. Visão Geral
+
+A DEX CPMM implementa um sistema completo de exchange descentralizada baseada em Constant Product Market Maker.
+
+O objetivo é criar um ambiente competitivo entre bots autónomos que operam sobre pools de liquidez em tempo real.
+
+O sistema inclui:
+
+- contratos inteligentes
+- backend em tempo real
+- ranking dinâmico
+- análise de performance
+- fairness engine
+- exportação de métricas
+- observabilidade do mercado
+
+---
+
+## 4. Arquitetura do Sistema
+
+```txt
+Bots
+   ↓
+Backend Event-Driven
+   ↓
+Smart Contracts
+   ↓
+Pools CPMM
+```
+
+### Componentes
+
+#### Smart Contracts
+
+- gestão de pools
+- swaps
+- liquidez
+- fees
+
+#### Backend
+
+- processamento de eventos
+- ranking
+- métricas
+- observabilidade
+
+#### Bots
+
+- estratégias autónomas
+- simulação de mercado
+- arbitragem
+- stress testing
+
+```txt
+dex_cpmm/
+├── contracts/
+├── backend/
+├── bots/
+├── scripts/
+├── analytics/
+├── exports/
+└── dashboard/
+```
+
+---
+
+## 5. Como a DEX Funciona
+
+### 5.1 CPMM
+
+O sistema utiliza o modelo:
+
+```txt
+x * y = k
+```
+
+Exemplo:
+
+```txt
+100 * 100 = 10.000
+```
+
+Após um swap:
+
+```txt
+110 * 90.90 ≈ 10.000
+```
+
+---
+
+### 5.2 Pools
+
+Cada pool contém dois ativos.
+
+Os preços são ajustados automaticamente pela relação entre reservas.
+
+---
+
+### 5.3 Swaps
+
+Os utilizadores trocam tokens diretamente contra a pool.
+
+Não existe order book.
+
+---
+
+### 5.4 Slippage
+
+O slippage aumenta conforme:
+
+- tamanho da ordem
+- liquidez disponível
+- impacto no pool
+
+---
+
+### 5.5 Fees
+
+Cada swap aplica uma taxa.
+
+As fees:
+
+- remuneram liquidez
+- estabilizam o sistema
+- reduzem spam de operações
+
+---
+
+## 6. Sistema de Avaliação
+
+### 6.1 Pesos Dinâmicos
+
+Os ativos possuem pesos variáveis.
+
+O ranking adapta-se conforme:
+
+- volatilidade
+- liquidez
+- comportamento do mercado
+
+---
+
+### 6.2 Portfolio Ponderado
+
+O score final considera:
+
+- valor do portfolio
+- risco
+- eficiência
+- drawdown
+- consistência
+
+---
+
+### 6.3 PnL
+
+O sistema calcula:
+
+- lucro
+- prejuízo
+- retorno acumulado
+- performance relativa
+
+---
+
+### 6.4 Nota
+
+Cada bot recebe uma nota dinâmica em tempo real.
+
+---
+
+## 7. Bots
+
+O sistema possui múltiplos agentes autónomos.
+
+| Bot | Estratégia |
+|---|---|
+| Noise Bot | Operações aleatórias |
+| Trend Bot | Segue tendência |
+| Shock Bot | Gera volatilidade |
+| Mean Reversion Bot | Reversão estatística |
+
+---
+
+## 8. Tecnologias
+
+| Camada | Stack |
+|---|---|
+| Smart Contracts | Solidity |
+| Blockchain | Hardhat |
+| Backend | Node.js |
+| Bots | Python |
+| Dashboard | React |
+| Comunicação | WebSockets |
+
+---
