@@ -40,8 +40,6 @@ A DEX CPMM é um ambiente competitivo de simulação de mercado construído sobr
 - Python 3.10+
 - Yarn
 
----
-
 ### Dependências
 
 ```bash
@@ -49,7 +47,6 @@ yarn install
 pip install -r requirements.txt
 ```
 
----
 
 ## 2. Execução
 
@@ -59,7 +56,7 @@ pip install -r requirements.txt
 yarn bootstrap:local
 ```
 
----
+
 
 ### 2. Configurar mercado
 
@@ -67,7 +64,7 @@ yarn bootstrap:local
 yarn setup:local
 ```
 
----
+
 
 ### 3. Backend
 
@@ -81,7 +78,7 @@ Dashboard:
 http://localhost:3001
 ```
 
----
+
 
 ### 4. Iniciar competição
 
@@ -96,7 +93,7 @@ yarn start:10m
 yarn start:30m
 ```
 
----
+
 
 ### 5. Iniciar bots
 
@@ -104,7 +101,7 @@ yarn start:30m
 python bots/run_all_bots.py
 ```
 
----
+
 
 ### Fluxo Completo
 
@@ -124,7 +121,7 @@ Lançamento dos bots
 Competição
 ```
 
----
+
 
 ### Considerações
 
@@ -229,7 +226,7 @@ Após um swap:
 110 * 90.90 ≈ 10.000
 ```
 
----
+
 
 ### 5.2 Pools
 
@@ -237,7 +234,7 @@ Cada pool contém dois ativos.
 
 Os preços são ajustados automaticamente pela relação entre reservas.
 
----
+
 
 ### 5.3 Swaps
 
@@ -245,7 +242,7 @@ Os utilizadores trocam tokens diretamente contra a pool.
 
 Não existe order book.
 
----
+
 
 ### 5.4 Slippage
 
@@ -255,7 +252,6 @@ O slippage aumenta conforme:
 - liquidez disponível
 - impacto no pool
 
----
 
 ### 5.5 Fees
 
@@ -281,8 +277,6 @@ O ranking adapta-se conforme:
 - liquidez
 - comportamento do mercado
 
----
-
 ### 6.2 Portfolio Ponderado
 
 O score final considera:
@@ -292,8 +286,6 @@ O score final considera:
 - eficiência
 - drawdown
 - consistência
-
----
 
 ### 6.3 PnL
 
@@ -310,7 +302,6 @@ O sistema calcula:
 
 Cada bot recebe uma nota dinâmica em tempo real.
 
----
 
 ## 7. Bots
 
@@ -336,4 +327,3 @@ O sistema possui múltiplos agentes autónomos.
 | Dashboard | React |
 | Comunicação | WebSockets |
 
----
