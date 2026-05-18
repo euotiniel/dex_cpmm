@@ -1,7 +1,4 @@
-
-data/state.json
-
-# ─────────────────────────────────────────────
+o que # ─────────────────────────────────────────────
 # Node
 # ─────────────────────────────────────────────
 node_modules/
@@ -37,6 +34,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.claude/
 
 # Temporary
 tmp/
@@ -86,5 +84,6 @@ mnemonic.txt
 
 # System monitor dumps
 system-logs/
-```
+
+# Local state
 data/state.json
