@@ -47,6 +47,7 @@ yarn install
 pip install -r requirements.txt
 ```
 
+---
 
 ## 2. Execução
 
@@ -296,12 +297,11 @@ O sistema calcula:
 - retorno acumulado
 - performance relativa
 
----
-
 ### 6.4 Nota
 
 Cada bot recebe uma nota dinâmica em tempo real.
 
+---
 
 ## 7. Bots
 
