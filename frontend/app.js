@@ -13,6 +13,9 @@ const activeBotsEl = document.getElementById("active-bots");
 const totalMarketsEl = document.getElementById("total-markets");
 const totalVolumeEl = document.getElementById("total-volume");
 
+const btnPrintTable = document.getElementById("btn-print-table");
+
+
 let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
@@ -23,7 +26,7 @@ let lastPoolsSignature = "";
 
 let countdownInterval = null;
 let _countdownEndTime = 0;
-let _serverClockOffsetMs = 0;
+let _serverClockOffsetMs = null;
 
 let eventSource = null;
 let reconnectTimer = null;
@@ -71,13 +74,11 @@ function formatTradeTime(timestamp) {
     second: "2-digit",
   });
 }
-
 function startCountdown(endTimeUnix, serverNowMs = Date.now()) {
   _serverClockOffsetMs = serverNowMs - Date.now();
 
-  if (endTimeUnix === _countdownEndTime && countdownInterval) return;
-
   _countdownEndTime = endTimeUnix;
+
   clearInterval(countdownInterval);
 
   const tick = () => {
@@ -98,20 +99,34 @@ function startCountdown(endTimeUnix, serverNowMs = Date.now()) {
   countdownInterval = setInterval(tick, 1000);
 }
 
-function renderStatus(status = {}, serverNowMs = Date.now()) {
+function getNowMs() {
+  return Date.now();
+}
+
+function syncClock(serverNowMs) {
+  if (_serverClockOffsetMs !== null) return;
+  _serverClockOffsetMs = serverNowMs - Date.now();
+}
+
+function renderStatus(status = {}, serverNowMs) {
+
+  if (serverNowMs && _serverClockOffsetMs === null) {
+  syncClock(serverNowMs);
+}
+
   const currentStatus = status.competitionStatus || "UNKNOWN";
   const livePill = document.querySelector(".live-pill");
 
   livePill.classList.remove("active", "ended", "pending", "error");
 
-  const now = Math.floor(serverNowMs / 1000);
-  const end = Number(status.competitionEndTime || 0);
+  const now = Math.floor(getNowMs() / 1000);
+  let end = Number(status.competitionEndTime || 0);
 
   if (currentStatus === "ACTIVE" && end > now) {
     livePill.classList.add("active");
     competitionStatusEl.textContent = "LIVE";
     timeLabelEl.textContent = "Ends in";
-    startCountdown(end, serverNowMs);
+    startCountdown(end);
     return;
   }
 
@@ -718,10 +733,12 @@ function renderAll(state) {
   const status = state.status || {};
   const referenceToken = state.referenceToken || {};
   const gradingWeights = state.gradingWeights || {};
+
+  
   const traderNameMap = buildTraderNameMap(ranking);
 
   renderControlPanel(state);
-  renderStatus(status, state.lastUpdatedAt || Date.now());
+  renderStatus(status);
   renderStats(state);
   renderProducts(tokens, pools, gradingWeights);
   renderTrades(trades, traderNameMap);
@@ -809,6 +826,54 @@ function withLoading(btn, fn) {
       if (lastState) renderControlPanel(lastState);
     });
 }
+
+function extractTableData() {
+  const rows = document.querySelectorAll("#table-ranking tr");
+
+  return Array.from(rows)
+    .map(row => {
+      const cols = row.querySelectorAll("td");
+      if (!cols.length) return null;
+
+      return {
+        rank: cols[0]?.innerText.trim(),
+        bot: cols[1]?.innerText.trim(),
+        nota: cols[2]?.innerText.trim(),
+        tkn1: cols[3]?.innerText.trim(),
+        tkn2: cols[4]?.innerText.trim(),
+        tkn3: cols[5]?.innerText.trim(),
+        tkn4: cols[6]?.innerText.trim(),
+        tkn5: cols[7]?.innerText.trim(),
+        score: cols[8]?.innerText.trim(),
+        pnl: cols[9]?.innerText.trim(),
+        ops: cols[10]?.innerText.trim(),
+      };
+    })
+    .filter(Boolean);
+}
+
+
+btnPrintTable?.addEventListener("click", async () => {
+  const data = extractTableData();
+
+  const ranking = extractTableData();
+
+  const res = await fetch("/export/xlsx", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ ranking })
+  });
+
+  const blob = await res.blob();
+
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "ranking.xlsx";
+  a.click();
+});
 
 document.getElementById("btn-start-app")?.addEventListener("click", (e) => {
   withLoading(e.currentTarget, () =>

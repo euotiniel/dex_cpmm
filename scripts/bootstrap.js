@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import ExcelJS from "exceljs";
+import { promisify } from "util";
 
 const ROOT = process.cwd();
 const ENV_PATH = path.join(ROOT, ".env");
@@ -216,6 +217,20 @@ function runDeploy() {
   });
 }
 
+const unlink = promisify(fs.unlink);
+
+async function deleteFile(filePath) {
+  await unlink(filePath);
+  console.log("Arquivo apagado com sucesso");
+}
+
+const filePath = path.resolve("data", "state.json");
+
+deleteFile(filePath)
+  .catch((err) => {
+    console.error("Erro ao apagar state.json:", err.message);
+  });
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
   // Caminho para o Excel — pode ser passado como argumento ou usa o padrão
@@ -225,6 +240,8 @@ async function main() {
     console.error(`Arquivo Excel não encontrado: ${xlsxPath}`);
     process.exit(1);
   }
+
+  
 
   console.log("=================================");
   console.log("Carregando bots do Excel:", xlsxPath);

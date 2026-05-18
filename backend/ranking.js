@@ -16,10 +16,6 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function calculateGrade20FromPnlPct(pnlPct) {
-  return clamp(10 + Number(pnlPct || 0) * 2, 0, 20);
-}
-
 function buildConversionGraph(pools = {}) {
   const graph = {};
 
@@ -131,12 +127,6 @@ function calculateWeightedPortfolioValue({
     weightedValue += weightedMarketValue;
   }
 
-  /*
-    Normalização:
-    - Sem isto, se TKN2 = 100%, o valor inicial seria 1000.
-    - Com isto, o valor inicial continua perto de 5000,
-      mantendo compatibilidade com INITIAL_REFERENCE_VALUE=5000.
-  */
   return {
     weightedPortfolioValue: weightedValue * tokenCount,
     weightedBreakdown,
@@ -158,6 +148,7 @@ export function calculateRanking({
 
   const referenceTokenAddress = referenceToken?.address;
 
+  // STEP 1: calcula valores ponderados (pesos determinam quanto cada token conta)
   const ranking = traders.map((traderAddress) => {
     const traderKey = norm(traderAddress);
     const balances = tokenBalancesByTrader[traderKey] || {};
@@ -183,31 +174,20 @@ export function calculateRanking({
           weightedBreakdown: {},
         };
 
-    const pnl = weightedPortfolioValue - initialReferenceValue;
-
-    const pnlPct =
-      initialReferenceValue > 0
-        ? (pnl / initialReferenceValue) * 100
-        : 0;
-
-    const grade20 = calculateGrade20FromPnlPct(pnlPct);
-
     return {
       trader: traderAddress,
       balances,
 
-      // Mantém compatibilidade com UI/fairness
       totalValue: weightedPortfolioValue,
 
-      // PnL real ponderado pelos pesos do professor
       portfolioValue,
       weightedPortfolioValue,
-      pnl,
-      pnlPct,
-      grade20,
 
-      // Mantido para não quebrar UI antiga, mas agora é PnL%
-      scorePct: pnlPct,
+      // preenchidos abaixo
+      pnl: 0,
+      pnlPct: 0,
+      grade20: 10,
+      scorePct: 0,
 
       referenceToken: referenceToken?.symbol || null,
       gradingWeights,
@@ -215,7 +195,41 @@ export function calculateRanking({
     };
   });
 
+  // STEP 2: média do grupo sobre o valor PONDERADO (soma zero)
+  const avg =
+    ranking.reduce((sum, bot) => sum + bot.weightedPortfolioValue, 0) /
+    ranking.length;
+
+  // fallback: se avg for 0 (pesos zerados / pools sem dados), usa initialReferenceValue
+  // para não quebrar o pnlPct — garante que o score sempre aparece
+  const pnlBase = avg > 0 ? avg : initialReferenceValue;
+
+  // STEP 3: pnl e pnlPct de cada bot
+  for (const bot of ranking) {
+    bot.pnl = bot.weightedPortfolioValue - avg;
+    bot.pnlPct = pnlBase > 0 ? (bot.pnl / pnlBase) * 100 : 0;
+    bot.scorePct = bot.pnlPct;
+  }
+
   ranking.sort((a, b) => Number(b.pnl || 0) - Number(a.pnl || 0));
+
+  // STEP 4: grade20 via z-score sobre pnlPct
+  const avgPnlPct =
+    ranking.reduce((sum, bot) => sum + bot.pnlPct, 0) / ranking.length;
+
+  const variance =
+    ranking.reduce((sum, bot) => {
+      return sum + Math.pow(bot.pnlPct - avgPnlPct, 2);
+    }, 0) / ranking.length;
+
+  const stdDev = Math.sqrt(variance);
+
+  for (const bot of ranking) {
+    const zScore =
+      stdDev > 0 ? (bot.pnlPct - avgPnlPct) / stdDev : 0;
+
+    bot.grade20 = clamp(10 + zScore * 1.2, 0, 20);
+  }
 
   return ranking;
 }

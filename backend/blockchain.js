@@ -150,10 +150,9 @@ export async function initBlockchain() {
   return { provider, exchange };
 }
 
-async function refreshCompetitionStatus() {
-  const [statusRaw, startTimeRaw, endTimeRaw] =
-    await exchange.getCompetitionStatus();
 
+async function refreshCompetitionStatus() {
+  const [statusRaw, startTimeRaw, endTimeRaw] = await exchange.getCompetitionStatus();
   setCompetitionStatus({
     competitionStatus: mapCompetitionStatus(Number(statusRaw)),
     competitionStartTime: Number(startTimeRaw),

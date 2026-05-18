@@ -1432,3 +1432,17 @@ thead th {
 .grade-cell.grade-bad strong {
   color: #ef4444;
 }
+
+.btn-print
+{
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  float: right;
+  margin-top: 10px;
+}
