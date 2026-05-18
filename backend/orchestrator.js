@@ -4,15 +4,18 @@
  */
 
 import { spawn } from "child_process";
+import console from "console";
 import { EventEmitter } from "events";
 import { readFileSync, existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, "..");
 const ENV_PATH = path.join(ROOT, ".env");
 const IS_WIN = process.platform === "win32";
+
 
 export const ORCH_STATE = Object.freeze({
   IDLE: "IDLE",
@@ -33,7 +36,7 @@ const BOT_CONFIGS = [
   { module: "bots.causes.meanReversionBot", name: "Bot de Reversão à Média" },
 ];
 
-function resolvePythonCommand() {
+  function resolvePythonCommand() {
   if (process.env.PYTHON_CMD && process.env.PYTHON_CMD.trim()) {
     return process.env.PYTHON_CMD.trim();
   }
@@ -302,7 +305,14 @@ class Orchestrator extends EventEmitter {
     }
 
     const proc = this._spawn(pythonCmd, ["-m", cfg.module]);
-
+    
+    console.log("verificando o bug")
+    console.log("pythonCmd:", pythonCmd);
+    console.log("cfg.module:", cfg.module);
+    console.log("ROOT:", ROOT);
+    console.log("comando completo:", `${pythonCmd} -m ${cfg.module}`);
+    console.log("processo:", proc);
+    
     const entry = {
       name: cfg.name,
       module: cfg.module,
