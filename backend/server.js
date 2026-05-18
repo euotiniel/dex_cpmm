@@ -132,6 +132,76 @@ app.get("/trades", (req, res) => safe(res, () => getState().trades));
 app.get("/ranking", (req, res) => safe(res, () => getState().ranking));
 app.get("/fairness", (req, res) => safe(res, () => getState().fairness));
 
+app.post("/export/xlsx", (req, res) => {
+  try {
+    const ranking = req.body?.ranking;
+
+    if (!Array.isArray(ranking)) {
+      return res.status(400).json({ error: "ranking inválido" });
+    }
+
+    // 1. Limpar e normalizar dados
+    const cleaned = ranking.map((row) => {
+  const botRaw = row.bot || "";
+
+  // 1. Remove tudo depois do \n (wallet)
+  const firstLine = botRaw.split("\n")[0] || "";
+
+  // 2. Extrai nome e ID dentro de (...)
+  const match = firstLine.match(/^(.*)\((\d+)\)$/);
+
+  const botName = match ? match[1].trim() : firstLine.trim();
+  const botId = match ? match[2] : "";
+
+  return {
+    Rank: row.rank,
+    ID: botId,
+    Nome: botName,
+    Nota: row.nota,
+
+    TKN1: row.tkn1?.replace(/\n/g, " "),
+    TKN2: row.tkn2?.replace(/\n/g, " "),
+    TKN3: row.tkn3?.replace(/\n/g, " "),
+    TKN4: row.tkn4?.replace(/\n/g, " "),
+    TKN5: row.tkn5?.replace(/\n/g, " "),
+
+    Score: row.score,
+    PnL: row.pnl,
+    Ops: row.ops,
+  };
+});
+
+    // 2. Criar worksheet
+    const worksheet = XLSX.utils.json_to_sheet(cleaned);
+
+    // 3. Criar workbook
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Ranking");
+
+    // 4. Converter para buffer
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    // 5. Enviar ficheiro
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="ranking.xlsx"'
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    return res.send(buffer);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao gerar XLSX" });
+  }
+});
+
 app.get("/botkeys/:id", (req, res) => {
 
     const id = parseInt(req.params.id);

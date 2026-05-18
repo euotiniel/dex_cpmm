@@ -144,7 +144,8 @@ export function setOrchestratorState(data) {
   emitter.emit("changed");
 }
 
-export function setCompetitionStatus(status) {
+export function setCompetitionStatus(status) 
+{
   state.status = { ...state.status, ...status };
   state.lastUpdatedAt = Date.now();
   emitter.emit("changed");

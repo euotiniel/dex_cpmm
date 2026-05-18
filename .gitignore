@@ -1,4 +1,3 @@
-o que # ─────────────────────────────────────────────
 # Node
 # ─────────────────────────────────────────────
 node_modules/
@@ -87,3 +86,5 @@ system-logs/
 
 # Local state
 data/state.json
+.env
+ranking.json
