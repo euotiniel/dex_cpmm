@@ -26,8 +26,6 @@ contract CPMMExchange is Ownable {
     }
 
     CompetitionStatus public competitionStatus;
-    uint256 public competitionStartTime;
-    uint256 public competitionEndTime;
 
     address[] public tokens;
     bytes32[] public poolIds;
@@ -73,12 +71,10 @@ contract CPMMExchange is Ownable {
     );
 
     event CompetitionStarted(
-        uint256 indexed startTime,
-        uint256 indexed endTime,
-        uint256 durationSeconds
+        CompetitionStatus competitionStatus
     );
 
-    event CompetitionEnded(uint256 indexed endTime);
+    event CompetitionEnded(CompetitionStatus competitionStatus);
 
     event GradingWeightsUpdated(
         address[] tokens,
@@ -419,33 +415,23 @@ contract CPMMExchange is Ownable {
     }
 
     function getCurrentCompetitionStatus() public view returns (CompetitionStatus) {
-        if (
-            competitionStatus == CompetitionStatus.ACTIVE &&
-            block.timestamp >= competitionEndTime
-        ) {
-            return CompetitionStatus.ENDED;
-        }
-
-        return competitionStatus;
-    }
+   
+    return competitionStatus; //apenas retorna o estado da competicao, sem logica adicional
+}
 
     function getCompetitionStatus()
         external
         view
         returns (
-            uint8 status,
-            uint256 startTime,
-            uint256 endTime
+            uint8 status
         )
     {
         return (
-            uint8(getCurrentCompetitionStatus()),
-            competitionStartTime,
-            competitionEndTime
+            uint8(getCurrentCompetitionStatus())
         );
     }
 
-    function startCompetition(uint256 durationSeconds) external onlyOwner {
+    function startCompetition() external onlyOwner {
         CompetitionStatus currentStatus = getCurrentCompetitionStatus();
 
         require(
@@ -454,16 +440,11 @@ contract CPMMExchange is Ownable {
             "Competition already active"
         );
 
-        require(durationSeconds > 0, "Invalid duration");
 
         competitionStatus = CompetitionStatus.ACTIVE;
-        competitionStartTime = block.timestamp;
-        competitionEndTime = block.timestamp + durationSeconds;
 
         emit CompetitionStarted(
-            competitionStartTime,
-            competitionEndTime,
-            durationSeconds
+            competitionStatus
         );
     }
 
@@ -471,8 +452,7 @@ contract CPMMExchange is Ownable {
         require(getCurrentCompetitionStatus() == CompetitionStatus.ACTIVE, "Competition not active");
 
         competitionStatus = CompetitionStatus.ENDED;
-        competitionEndTime = block.timestamp;
 
-        emit CompetitionEnded(block.timestamp);
+        emit CompetitionEnded(competitionStatus);
     }
 }

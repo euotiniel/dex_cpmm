@@ -7,6 +7,9 @@ import { fileURLToPath } from "url";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
 import XLSX from "xlsx";
+import hre from "hardhat";
+import { ethers } from "ethers";
+
 
 
 import {
@@ -40,6 +43,12 @@ import {
 
 import { orchestrator, ORCH_STATE } from "./orchestrator.js";
 import { calculateFairness } from "./fairness.js";
+
+const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+const wallet = new ethers.Wallet(
+  process.env.DEPLOYER_PK,
+  provider
+);
 
 dotenv.config();
 
@@ -288,6 +297,8 @@ app.get("/admin/grading-weights", (req, res) => {
   });
 });
 
+
+
 app.post("/admin/grading-weights", async (req, res) => {
   try {
     const { weights } = req.body || {};
@@ -440,12 +451,61 @@ app.get("/api/bots/:botId/balance", authBot, async (req, res) => {
    ORCHESTRATOR
 =========================== */
 
+app.post("/competition/start", async (req, res) => {
+  try {
+    const exchange = await hre.ethers.getContractAt(
+      "CPMMExchange",
+      process.env.EXCHANGE_ADDRESS,
+      wallet 
+    );
+
+    const tx = await exchange.startCompetition();
+    await tx.wait();
+
+    res.json({
+      success: true,
+      status: "started",
+      hash: tx.hash,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err.message,
+    });
+  }
+});
+
+app.post("/competition/end", async (req, res) => {
+  try {
+    const exchange = await hre.ethers.getContractAt(
+      "CPMMExchange",
+      process.env.EXCHANGE_ADDRESS,
+      wallet 
+    );
+
+    const tx = await exchange.endCompetition();
+    await tx.wait();
+
+    res.json({
+      success: true,
+      status: "ended",
+      hash: tx.hash,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: err.message,
+    });
+  }
+});
+
+
+
+
 app.get("/orchestrate/status", (req, res) =>
   safe(res, () => orchestrator.getStatus())
 );
 
 app.post("/orchestrate/full-start", (req, res) => {
-  const duration = Number(req.body?.duration || 300);
 
   res.json({ ok: true });
 
@@ -457,11 +517,8 @@ app.post("/orchestrate/full-start", (req, res) => {
 
       await reinitBlockchain();
 
-      await orchestrator.startBots();
-
       resetCompetitionData();
 
-      await startCompetitionOnChain(duration);
     } catch (e) {
       orchestrator.setState(ORCH_STATE.ERROR);
     }

@@ -78,8 +78,6 @@ EXCHANGE_ABI = [
         "name": "getCompetitionStatus",
         "outputs": [
             {"internalType": "uint8", "name": "status", "type": "uint8"},
-            {"internalType": "uint256", "name": "startTime", "type": "uint256"},
-            {"internalType": "uint256", "name": "endTime", "type": "uint256"}
         ],
         "stateMutability": "view",
         "type": "function"
@@ -205,12 +203,10 @@ class DexClient:
         raise last_error
 
     def get_competition_status(self):
-        status, start_time, end_time = self.exchange.functions.getCompetitionStatus().call()
+        status = self.exchange.functions.getCompetitionStatus().call()
 
         return {
             "status": int(status),
-            "start_time": int(start_time),
-            "end_time": int(end_time)
         }
 
     def wait_until_active(self, interval_seconds=2):

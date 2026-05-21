@@ -18,8 +18,6 @@ let _tradesSinceLastSave = 0;
 const state = {
   status: {
     competitionStatus: "NOT_STARTED",
-    competitionStartTime: 0,
-    competitionEndTime: 0,
   },
 
   tokens: [],

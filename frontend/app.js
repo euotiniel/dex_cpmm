@@ -12,6 +12,9 @@ const totalTradesEl = document.getElementById("total-trades");
 const activeBotsEl = document.getElementById("active-bots");
 const totalMarketsEl = document.getElementById("total-markets");
 const totalVolumeEl = document.getElementById("total-volume");
+const startBtn = document.getElementById("btn-start-app");
+const stopBtn = document.getElementById("btn-stop-app");
+//const restartBtn = document.getElementById("btn-restart-bots");
 
 const btnPrintTable = document.getElementById("btn-print-table");
 
@@ -23,10 +26,6 @@ let selectedPoolId = null;
 let selectedTimeframe = 5;
 let lastState = null;
 let lastPoolsSignature = "";
-
-let countdownInterval = null;
-let _countdownEndTime = 0;
-let _serverClockOffsetMs = null;
 
 let eventSource = null;
 let reconnectTimer = null;
@@ -74,96 +73,41 @@ function formatTradeTime(timestamp) {
     second: "2-digit",
   });
 }
-function startCountdown(endTimeUnix, serverNowMs = Date.now()) {
-  _serverClockOffsetMs = serverNowMs - Date.now();
 
-  _countdownEndTime = endTimeUnix;
 
-  clearInterval(countdownInterval);
 
-  const tick = () => {
-    const nowUnix = Math.floor((Date.now() + _serverClockOffsetMs) / 1000);
-    const remaining = _countdownEndTime - nowUnix;
 
-    if (remaining <= 0) {
-      competitionTimeEl.textContent = "00:00:00";
-      clearInterval(countdownInterval);
-      countdownInterval = null;
-      return;
-    }
 
-    competitionTimeEl.textContent = formatDuration(remaining);
-  };
-
-  tick();
-  countdownInterval = setInterval(tick, 1000);
-}
-
-function getNowMs() {
-  return Date.now();
-}
-
-function syncClock(serverNowMs) {
-  if (_serverClockOffsetMs !== null) return;
-  _serverClockOffsetMs = serverNowMs - Date.now();
-}
-
-function renderStatus(status = {}, serverNowMs) {
-
-  if (serverNowMs && _serverClockOffsetMs === null) {
-  syncClock(serverNowMs);
-}
-
+function renderStatus(status = {}) {
   const currentStatus = status.competitionStatus || "UNKNOWN";
   const livePill = document.querySelector(".live-pill");
 
   livePill.classList.remove("active", "ended", "pending", "error");
 
-  const now = Math.floor(getNowMs() / 1000);
-  let end = Number(status.competitionEndTime || 0);
-
-  if (currentStatus === "ACTIVE" && end > now) {
+  if (currentStatus === "ACTIVE") {
     livePill.classList.add("active");
     competitionStatusEl.textContent = "LIVE";
-    timeLabelEl.textContent = "Ends in";
-    startCountdown(end);
-    return;
-  }
-
-  if (currentStatus === "ACTIVE" && end <= now) {
-    livePill.classList.add("ended");
-    competitionStatusEl.textContent = "ENDED";
-    timeLabelEl.textContent = "Finished";
-    competitionTimeEl.textContent = "00:00:00";
-    clearInterval(countdownInterval);
-    countdownInterval = null;
+    timeLabelEl.textContent = "Em curso";
     return;
   }
 
   if (currentStatus === "ENDED") {
     livePill.classList.add("ended");
     competitionStatusEl.textContent = "ENDED";
-    timeLabelEl.textContent = "Finished";
-    competitionTimeEl.textContent = "00:00:00";
-    clearInterval(countdownInterval);
-    countdownInterval = null;
+    timeLabelEl.textContent = "Terminada";
     return;
   }
 
   if (currentStatus === "NOT_STARTED") {
     livePill.classList.add("pending");
     competitionStatusEl.textContent = "PENDING";
-    timeLabelEl.textContent = "Waiting";
-    competitionTimeEl.textContent = "--:--:--";
-    clearInterval(countdownInterval);
-    countdownInterval = null;
+    timeLabelEl.textContent = "A aguardar";
     return;
   }
 
   livePill.classList.add("error");
   competitionStatusEl.textContent = "UNKNOWN";
-  timeLabelEl.textContent = "Status";
-  competitionTimeEl.textContent = "--:--:--";
+  timeLabelEl.textContent = "Estado";
 }
 
 function poolsArray(state) {
@@ -659,69 +603,8 @@ function renderOrchestratorBadge(orchState) {
   el.className = "orch-badge " + orchBadgeClass(orchState);
 }
 
-function getUiSystemMode(state) {
-  const orchState = state.orchestrator?.state || "IDLE";
-  const competitionStatus = state.status?.competitionStatus || "NOT_STARTED";
 
-  if (
-    competitionStatus === "ACTIVE" &&
-    (orchState === "IDLE" || orchState === "STOPPED")
-  ) {
-    return "MANUAL_ACTIVE";
-  }
 
-  return orchState;
-}
-
-function updateButtonStates(state) {
-  const orchState = state.orchestrator?.state || "IDLE";
-  const competitionStatus = state.status?.competitionStatus || "NOT_STARTED";
-  const mode = getUiSystemMode(state);
-  const isBusy = TRANSITIONING.has(orchState);
-
-  const canStart =
-    !isBusy &&
-    competitionStatus !== "ACTIVE" &&
-    (orchState === "IDLE" || orchState === "STOPPED");
-
-  const canStop =
-    !isBusy && orchState === "RUNNING" && competitionStatus === "ACTIVE";
-
-  const canRestartApp =
-    !isBusy &&
-    competitionStatus !== "ACTIVE" &&
-    (orchState === "STOPPED" || orchState === "ERROR");
-
-  const btnStart = document.getElementById("btn-start-app");
-  const btnStop = document.getElementById("btn-stop-app");
-  const btnRestartBots = document.getElementById("btn-restart-bots");
-  const btnRestartApp = document.getElementById("btn-restart-app");
-
-  if (btnStart) btnStart.disabled = !canStart;
-  if (btnStop) btnStop.disabled = !canStop;
-  if (btnRestartBots) btnRestartBots.disabled = true;
-  if (btnRestartApp) btnRestartApp.disabled = !canRestartApp;
-
-  const hint = document.getElementById("ctrl-hint");
-
-  if (hint) {
-    if (mode === "MANUAL_ACTIVE") {
-      hint.textContent = "Competição ativa fora do orchestrator.";
-    } else if (competitionStatus === "ACTIVE") {
-      hint.textContent = "Competição em execução.";
-    } else if (competitionStatus === "ENDED") {
-      hint.textContent = "Competição terminada.";
-    } else {
-      hint.textContent = "Pronto para iniciar.";
-    }
-  }
-}
-
-function renderControlPanel(state) {
-  const mode = getUiSystemMode(state);
-  renderOrchestratorBadge(mode);
-  updateButtonStates(state);
-}
 
 function renderAll(state) {
   lastState = state;
@@ -737,7 +620,6 @@ function renderAll(state) {
   
   const traderNameMap = buildTraderNameMap(ranking);
 
-  renderControlPanel(state);
   renderStatus(status);
   renderStats(state);
   renderProducts(tokens, pools, gradingWeights);
@@ -804,27 +686,24 @@ async function apiPost(path, body = {}) {
   return json;
 }
 
-function getDuration() {
-  return Number(document.getElementById("competition-duration")?.value || 300);
-}
 
-function withLoading(btn, fn) {
+
+async function withLoading(btn, fn) {
   const orig = btn.textContent;
 
   btn.disabled = true;
   btn.textContent = "Working…";
 
-  fn()
-    .catch((err) => {
-      console.error("Button action failed:", err.message);
-      alert(err.message);
-    })
-    .finally(() => {
-      btn.textContent = orig;
-      btn.disabled = false;
-
-      if (lastState) renderControlPanel(lastState);
-    });
+  try {
+    return await fn();
+  } catch (err) {
+    console.error("Button action failed:", err.message);
+    alert(err.message);
+    throw err;
+  } finally {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
 }
 
 function extractTableData() {
@@ -875,27 +754,59 @@ btnPrintTable?.addEventListener("click", async () => {
   a.click();
 });
 
-document.getElementById("btn-start-app")?.addEventListener("click", (e) => {
-  withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/full-start", { duration: getDuration() }),
-  );
+document.getElementById("btn-start-app")?.addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+
+  try {
+    await withLoading(btn, async () => {
+      await apiPost("/competition/start");
+    });
+
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = false;
+    if (restartBtn) restartBtn.disabled = true;
+
+  } catch (err) {
+    console.error(err);
+  }
 });
 
-document.getElementById("btn-stop-app")?.addEventListener("click", (e) => {
-  withLoading(e.currentTarget, () => apiPost("/orchestrate/stop-app"));
+document.getElementById("btn-stop-app")?.addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+
+  try {
+    await withLoading(btn, async () => {
+      await apiPost("/competition/end");
+    });
+
+    if (stopBtn) stopBtn.disabled = true;
+    if (startBtn) startBtn.disabled = false;
+    if (restartBtn) restartBtn.disabled = false;
+
+  } catch (err) {
+    console.error(err);
+  }
 });
 
-document.getElementById("btn-restart-app")?.addEventListener("click", (e) => {
+/*
+restartBtn?.addEventListener("click", async (e) => {
   const ok = confirm(
-    "Full reset? Isto vai redesplegar contratos e reiniciar a competição.",
+    "Full reset? Isto vai apagar contratos e reiniciar a competição.",
   );
 
   if (!ok) return;
 
-  withLoading(e.currentTarget, () =>
-    apiPost("/orchestrate/restart-app", { duration: getDuration() }),
-  );
+  const btn = e.currentTarget;
+
+  try {
+    await withLoading(btn, async () => {
+      await apiPost("/orchestrate/full-start");
+    });
+  } catch (err) {
+    console.error(err);
+  }
 });
+*/
 
 async function fetchInitialState() {
   try {

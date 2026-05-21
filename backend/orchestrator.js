@@ -10,12 +10,10 @@ import { readFileSync, existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, "..");
 const ENV_PATH = path.join(ROOT, ".env");
 const IS_WIN = process.platform === "win32";
-
 
 export const ORCH_STATE = Object.freeze({
   IDLE: "IDLE",
@@ -30,13 +28,13 @@ export const ORCH_STATE = Object.freeze({
 });
 
 const BOT_CONFIGS = [
-  { module: "bots.causes.noiseBot", name: "Bot de Ruído" },
-  { module: "bots.causes.shockBot", name: "Bot de Choque" },
-  { module: "bots.causes.trendBot", name: "Bot de Tendência" },
+  { module: "bots.causes.noiseBot",        name: "Bot de Ruído" },
+  { module: "bots.causes.shockBot",        name: "Bot de Choque" },
+  { module: "bots.causes.trendBot",        name: "Bot de Tendência" },
   { module: "bots.causes.meanReversionBot", name: "Bot de Reversão à Média" },
 ];
 
-  function resolvePythonCommand() {
+function resolvePythonCommand() {
   if (process.env.PYTHON_CMD && process.env.PYTHON_CMD.trim()) {
     return process.env.PYTHON_CMD.trim();
   }
@@ -44,7 +42,7 @@ const BOT_CONFIGS = [
   const candidates = IS_WIN
     ? [
         path.join(ROOT, ".venv", "Scripts", "python.exe"),
-        path.join(ROOT, "venv", "Scripts", "python.exe"),
+        path.join(ROOT, "venv",  "Scripts", "python.exe"),
         "py",
         "python",
       ]
@@ -54,7 +52,7 @@ const BOT_CONFIGS = [
         "/usr/bin/python",
         "python",
         path.join(ROOT, ".venv", "bin", "python"),
-        path.join(ROOT, "venv", "bin", "python"),
+        path.join(ROOT, "venv",  "bin", "python"),
       ];
 
   for (const candidate of candidates) {
@@ -62,7 +60,6 @@ const BOT_CONFIGS = [
       candidate.includes("/") || candidate.includes("\\") || path.isAbsolute(candidate);
 
     if (!looksLikePath) return candidate;
-
     if (existsSync(candidate)) return candidate;
   }
 
@@ -73,12 +70,14 @@ class Orchestrator extends EventEmitter {
   constructor() {
     super();
     this.setMaxListeners(100);
-    this.state = ORCH_STATE.IDLE;
-    this.logs = [];
+    this.state  = ORCH_STATE.IDLE;
+    this.logs   = [];
     this.hhNode = null;
-    this.bots = [];
+    this.bots   = [];
     this.deployed = false;
   }
+
+  // ─── Logging ────────────────────────────────────────────────────────────────
 
   log(message, level = "INFO") {
     const entry = { t: Date.now(), level, message: String(message).trim() };
@@ -96,21 +95,25 @@ class Orchestrator extends EventEmitter {
     this.log(`State → ${s}`);
   }
 
+  // ─── Status ─────────────────────────────────────────────────────────────────
+
   getStatus() {
     return {
-      state: this.state,
+      state:      this.state,
       nodeRunning: Boolean(this.hhNode && !this.hhNode.killed),
       bots: this.bots.map(({ name, module, alive, exitCode, pid }) => ({
         name,
         module,
         alive,
         exitCode: exitCode ?? null,
-        pid: pid ?? null,
+        pid:      pid      ?? null,
       })),
-      deployed: this.deployed,
+      deployed:   this.deployed,
       recentLogs: this.logs.slice(-150),
     };
   }
+
+  // ─── Env ────────────────────────────────────────────────────────────────────
 
   reloadEnv() {
     try {
@@ -125,10 +128,7 @@ class Orchestrator extends EventEmitter {
         const eq = t.indexOf("=");
         if (eq === -1) continue;
 
-        const k = t.slice(0, eq).trim();
-        const v = t.slice(eq + 1).trim();
-
-        process.env[k] = v;
+        process.env[t.slice(0, eq).trim()] = t.slice(eq + 1).trim();
       }
 
       this.log("Reloaded .env — new contract addresses in process.env");
@@ -137,13 +137,12 @@ class Orchestrator extends EventEmitter {
     }
   }
 
+  // ─── Node ───────────────────────────────────────────────────────────────────
+
   async isNodeRunning() {
     const { ethers } = await import("ethers");
-
     try {
-      const p = new ethers.JsonRpcProvider(
-        process.env.RPC_URL
-      );
+      const p = new ethers.JsonRpcProvider(process.env.RPC_URL);
       await p.getBlockNumber();
       return true;
     } catch {
@@ -153,19 +152,19 @@ class Orchestrator extends EventEmitter {
 
   _spawn(cmd, args, extraEnv = {}) {
     return spawn(cmd, args, {
-      cwd: ROOT,
+      cwd:   ROOT,
       shell: IS_WIN,
-      env: { ...process.env, ...extraEnv },
+      env:   { ...process.env, ...extraEnv },
     });
   }
 
   _runHardhatScript(scriptRelPath, extraEnv = {}) {
     return new Promise((resolve, reject) => {
-      this.log(`Running: npx hardhat run ${scriptRelPath} --network ${process.env.RPC_URL}`);
+      this.log(`Running: npx hardhat run ${scriptRelPath} --network localhost`);
 
       const proc = this._spawn(
         "npx",
-        ["hardhat", "run", scriptRelPath, "--network", process.env.RPC_URL],
+        ["hardhat", "run", scriptRelPath, "--network", "localhost"],
         extraEnv
       );
 
@@ -174,7 +173,6 @@ class Orchestrator extends EventEmitter {
       proc.stdout.on("data", (d) => {
         const text = d.toString();
         stdout += text;
-
         for (const line of text.split("\n")) {
           const l = line.trim();
           if (l) this.log(l, "SCRIPT");
@@ -183,7 +181,6 @@ class Orchestrator extends EventEmitter {
 
       proc.stderr.on("data", (d) => {
         const text = d.toString();
-
         for (const line of text.split("\n")) {
           const l = line.trim();
           if (l) this.log(l, l.toLowerCase().includes("error") ? "ERROR" : "WARN");
@@ -201,12 +198,12 @@ class Orchestrator extends EventEmitter {
 
   async startNode() {
     if (await this.isNodeRunning()) {
-      this.log("Hardhat node already responding on port 8545 — reusing");
+      this.log("Hardhat node already responding — reusing");
       return;
     }
 
     this.setState(ORCH_STATE.STARTING_NODE);
-    this.log("Starting Hardhat node (npx hardhat node)...");
+    this.log("Starting Hardhat node...");
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -218,12 +215,10 @@ class Orchestrator extends EventEmitter {
 
       this.hhNode.stdout.on("data", (d) => {
         const text = d.toString();
-
         for (const line of text.split("\n")) {
           const l = line.trim();
           if (l) this.log(l, "NODE");
         }
-
         if (
           text.includes("Started HTTP and WebSocket JSON-RPC server") ||
           text.includes("Listening on")
@@ -235,9 +230,7 @@ class Orchestrator extends EventEmitter {
       });
 
       this.hhNode.stderr.on("data", (d) => {
-        const text = d.toString();
-
-        for (const line of text.split("\n")) {
+        for (const line of d.toString().split("\n")) {
           const l = line.trim();
           if (l) this.log(l, "NODE");
         }
@@ -257,6 +250,16 @@ class Orchestrator extends EventEmitter {
     });
   }
 
+  _killNode() {
+    if (this.hhNode && !this.hhNode.killed) {
+      try { this.hhNode.kill("SIGTERM"); } catch {}
+      this.hhNode = null;
+      this.log("Hardhat node terminated");
+    }
+  }
+
+  // ─── Deploy & Setup ─────────────────────────────────────────────────────────
+
   async deployContracts() {
     this.setState(ORCH_STATE.DEPLOYING);
     this.log("Deploying smart contracts...");
@@ -272,6 +275,40 @@ class Orchestrator extends EventEmitter {
     await this._runHardhatScript("scripts/setup.js");
     this.log("Market setup complete");
   }
+
+  // ─── restartDex ─────────────────────────────────────────────────────────────
+  // Stops bots, kills node, restarts everything (node → deploy → setup).
+  // Does NOT launch bots at the end — caller decides that.
+
+  async restartDex() {
+    this.log("=== DEX restart requested ===");
+
+    // 1. Stop bots gracefully
+    this.stopBots();
+    await new Promise((r) => setTimeout(r, 2_000));
+
+    // 2. Kill the Hardhat node so we get a clean chain state
+    this._killNode();
+    await new Promise((r) => setTimeout(r, 500));
+
+    // 3. Reset in-memory state (keep logs)
+    this.bots     = [];
+    this.deployed = false;
+
+    // 4. Start fresh node
+    await this.startNode();
+
+    // 5. Deploy contracts + reload env
+    await this.deployContracts();
+
+    // 6. Create pools, register traders
+    await this.setupMarket();
+
+    this.setState(ORCH_STATE.STOPPED);
+    this.log("=== DEX restart complete — ready to start competition ===");
+  }
+
+  // ─── Bots ───────────────────────────────────────────────────────────────────
 
   async startBots() {
     const alive = this.bots.filter((b) => b.alive);
@@ -295,31 +332,23 @@ class Orchestrator extends EventEmitter {
   }
 
   _launchBot(cfg, restartCount = 0) {
-    const MAX_RESTARTS = 5;
+    const MAX_RESTARTS  = 5;
     const RESTART_DELAY = 5_000;
 
     const pythonCmd = resolvePythonCommand();
 
     if (restartCount === 0) {
-      this.log(`[${cfg.name}] using Python runtime: ${pythonCmd}`);
+      this.log(`[${cfg.name}] Python runtime: ${pythonCmd}`);
     }
 
-    const proc = this._spawn(pythonCmd, ["-m", cfg.module]);
-    
-    console.log("verificando o bug")
-    console.log("pythonCmd:", pythonCmd);
-    console.log("cfg.module:", cfg.module);
-    console.log("ROOT:", ROOT);
-    console.log("comando completo:", `${pythonCmd} -m ${cfg.module}`);
-    console.log("processo:", proc);
-    
+    const proc  = this._spawn(pythonCmd, ["-m", cfg.module]);
     const entry = {
-      name: cfg.name,
-      module: cfg.module,
+      name:    cfg.name,
+      module:  cfg.module,
       process: proc,
-      alive: true,
+      alive:   true,
       exitCode: null,
-      pid: proc.pid ?? null,
+      pid:     proc.pid ?? null,
     };
 
     proc.stdout.on("data", (d) => {
@@ -333,11 +362,9 @@ class Orchestrator extends EventEmitter {
     });
 
     proc.on("close", (code) => {
-      entry.alive = false;
+      entry.alive    = false;
       entry.exitCode = code;
-
       this.emit("botExited", cfg.name, code);
-
       this.log(
         `[${cfg.name}] process exited (code=${code})`,
         code === 0 ? "INFO" : "WARN"
@@ -346,41 +373,36 @@ class Orchestrator extends EventEmitter {
       if (this.state !== ORCH_STATE.RUNNING) return;
 
       if (restartCount >= MAX_RESTARTS) {
-        this.log(
-          `[${cfg.name}] max restarts (${MAX_RESTARTS}) reached — will not restart`,
-          "ERROR"
-        );
+        this.log(`[${cfg.name}] max restarts reached — giving up`, "ERROR");
         return;
       }
 
-      const nextCount = restartCount + 1;
-
+      const next = restartCount + 1;
       this.log(
-        `[${cfg.name}] restarting in ${RESTART_DELAY / 1000}s (attempt ${nextCount}/${MAX_RESTARTS})`,
+        `[${cfg.name}] restarting in ${RESTART_DELAY / 1000}s (${next}/${MAX_RESTARTS})`,
         "WARN"
       );
 
       setTimeout(() => {
         if (this.state !== ORCH_STATE.RUNNING) return;
-
-        const idx = this.bots.indexOf(entry);
-        const newEntry = this._launchBot(cfg, nextCount);
-
+        const idx      = this.bots.indexOf(entry);
+        const newEntry = this._launchBot(cfg, next);
         if (idx !== -1 && newEntry) this.bots[idx] = newEntry;
-
         this.emit("botExited");
       }, RESTART_DELAY);
     });
 
     proc.on("error", (err) => {
-      entry.alive = false;
+      entry.alive    = false;
       entry.exitCode = -1;
-      this.log(`[${cfg.name}] spawn error using "${pythonCmd}": ${err.message}`, "ERROR");
+      this.log(`[${cfg.name}] spawn error: ${err.message}`, "ERROR");
       this.emit("botExited", cfg.name, -1);
     });
 
-    if (restartCount === 0) this.bots.push(entry);
-    if (restartCount === 0) this.log(`Launched: ${cfg.name}`);
+    if (restartCount === 0) {
+      this.bots.push(entry);
+      this.log(`Launched: ${cfg.name}`);
+    }
 
     return entry;
   }
@@ -396,81 +418,59 @@ class Orchestrator extends EventEmitter {
     this.log(`Sending SIGTERM to ${running.length} bots...`);
 
     for (const b of running) {
-      try {
-        b.process.kill("SIGTERM");
-      } catch {}
+      try { b.process.kill("SIGTERM"); } catch {}
     }
 
     setTimeout(() => {
       for (const b of this.bots) {
         if (b.alive) {
-          try {
-            b.process.kill("SIGKILL");
-          } catch {}
+          try { b.process.kill("SIGKILL"); } catch {}
         }
       }
-    }, 2000);
+    }, 2_000);
   }
+
+  // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
   async stop() {
     if (this.state === ORCH_STATE.IDLE || this.state === ORCH_STATE.STOPPED) return;
 
     this.setState(ORCH_STATE.STOPPING);
     this.stopBots();
-
-    await new Promise((r) => setTimeout(r, 1500));
-
+    await new Promise((r) => setTimeout(r, 1_500));
     this.setState(ORCH_STATE.STOPPED);
-    this.log("Application stopped — click Start Application to resume");
+    this.log("Application stopped");
   }
 
   async reset() {
     this.log("Resetting system...");
     this.stopBots();
-
-    if (this.hhNode && !this.hhNode.killed) {
-      try {
-        this.hhNode.kill("SIGTERM");
-      } catch {}
-      this.hhNode = null;
-    }
-
+    this._killNode();
     await new Promise((r) => setTimeout(r, 500));
 
-    this.bots = [];
+    this.bots     = [];
     this.deployed = false;
-    this.logs = [];
+    this.logs     = [];
 
     this.setState(ORCH_STATE.IDLE);
     this.log("System reset complete — ready for a fresh start");
   }
 
+  // ─── Shutdown hook ──────────────────────────────────────────────────────────
+
   registerShutdownHook() {
     const cleanup = () => {
       for (const b of this.bots) {
-        try {
-          b.process.kill();
-        } catch {}
+        try { b.process.kill(); } catch {}
       }
-
       if (this.hhNode) {
-        try {
-          this.hhNode.kill();
-        } catch {}
+        try { this.hhNode.kill(); } catch {}
       }
     };
 
-    process.on("exit", cleanup);
-
-    process.on("SIGINT", () => {
-      cleanup();
-      process.exit(0);
-    });
-
-    process.on("SIGTERM", () => {
-      cleanup();
-      process.exit(0);
-    });
+    process.on("exit",   cleanup);
+    process.on("SIGINT",  () => { cleanup(); process.exit(0); });
+    process.on("SIGTERM", () => { cleanup(); process.exit(0); });
   }
 }
 

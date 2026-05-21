@@ -247,17 +247,16 @@ describe("CPMMExchange", () => {
   describe("Competition lifecycle", () => {
     it("starts competition correctly", async () => {
       const { exchange } = await deployFixture();
-      await exchange.startCompetition(300);
+      await exchange.startCompetition();
 
-      const [status, startTime, endTime] = await exchange.getCompetitionStatus();
+      const [status] = await exchange.getCompetitionStatus();
       expect(Number(status)).to.equal(1); // ACTIVE
-      expect(Number(endTime)).to.be.greaterThan(Number(startTime));
     });
 
     it("cannot start competition twice", async () => {
       const { exchange } = await deployFixture();
-      await exchange.startCompetition(300);
-      await expect(exchange.startCompetition(300)).to.be.revertedWith(
+      await exchange.startCompetition();
+      await expect(exchange.startCompetition()).to.be.revertedWith(
         "Competition already started or ended"
       );
     });

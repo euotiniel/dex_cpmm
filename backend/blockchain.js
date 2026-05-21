@@ -21,15 +21,15 @@ const EXCHANGE_ABI = [
   "function getPoolByTokens(address tokenA, address tokenB) view returns (bool exists, bytes32 poolId, address token0, address token1, uint256 reserve0, uint256 reserve1)",
   "function quote(address tokenIn, address tokenOut, uint256 amountIn) view returns (uint256 amountOut)",
   "function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut) pure returns (uint256)",
-  "function getCompetitionStatus() view returns (uint8 status, uint256 startTime, uint256 endTime)",
+  "function getCompetitionStatus() view returns (uint8 status)",
   "function getGradingWeights() view returns (address[] memory tokenList, uint256[] memory weightsBps)",
   "function setGradingWeights(address[] calldata tokenList, uint256[] calldata weightsBps) external",
-  "function startCompetition(uint256 durationSeconds) external",
+  "function startCompetition() external",
   "function endCompetition() external",
   "function isTrader(address) view returns (bool)",
   "event Swapped(address indexed trader, bytes32 indexed poolId, address indexed tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut, uint256 newReserveIn, uint256 newReserveOut)",
-  "event CompetitionStarted(uint256 indexed startTime, uint256 indexed endTime, uint256 durationSeconds)",
-  "event CompetitionEnded(uint256 indexed endTime)",
+  "event CompetitionStarted(uint8 competitionStatus)",
+  "event CompetitionEnded(uint8 competitionStatus)",
   "event GradingWeightsUpdated(address[] tokens, uint256[] weightsBps)",
 ];
 
@@ -152,11 +152,10 @@ export async function initBlockchain() {
 
 
 async function refreshCompetitionStatus() {
-  const [statusRaw, startTimeRaw, endTimeRaw] = await exchange.getCompetitionStatus();
+  const statusRaw = await exchange.getCompetitionStatus();
+
   setCompetitionStatus({
     competitionStatus: mapCompetitionStatus(Number(statusRaw)),
-    competitionStartTime: Number(startTimeRaw),
-    competitionEndTime: Number(endTimeRaw),
   });
 }
 
@@ -352,23 +351,20 @@ function registerEventListeners() {
     }
   );
 
-  exchange.on("CompetitionStarted", async (startTime, endTime) => {
-    setCompetitionStatus({
-      competitionStatus: "ACTIVE",
-      competitionStartTime: Number(startTime),
-      competitionEndTime: Number(endTime),
-    });
+  exchange.on("CompetitionStarted", async () => {
+  setCompetitionStatus({
+    competitionStatus: "ACTIVE",
+  });
+});
+
+exchange.on("CompetitionEnded", async () => {
+  setCompetitionStatus({
+    competitionStatus: "ENDED",
   });
 
-  exchange.on("CompetitionEnded", async (endTime) => {
-    setCompetitionStatus({
-      competitionStatus: "ENDED",
-      competitionEndTime: Number(endTime),
-    });
-
-    await refreshAllBalances();
-    computeRanking();
-  });
+  await refreshAllBalances();
+  computeRanking();
+});
 
   exchange.on("GradingWeightsUpdated", async () => {
     try {
