@@ -81,21 +81,6 @@ http://localhost:3001
 
 
 
-### 4. Iniciar competição
-
-```bash
-yarn start:5m
-```
-
-Outras durações:
-
-```bash
-yarn start:10m
-yarn start:30m
-```
-
-
-
 ### 5. Iniciar bots
 
 ```bash
